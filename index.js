@@ -1,14 +1,4 @@
-const { 
-    Client, 
-    GatewayIntentBits, 
-    EmbedBuilder, 
-    PermissionsBitField, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder,
-    ApplicationIntegrationType,
-    InteractionContextType
-} = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const Parser = require('rss-parser');
 const http = require('http');
 const Groq = require('groq-sdk');
@@ -39,20 +29,13 @@ const BRAND_COLOR = 0x0099FF;
 let lastVideoId = '';
 const channelMemories = new Map();
 
-// --- DEFINE GLOBAL SLASH COMMANDS (USER-INSTALLABLE) ---
+// --- DEFINE GLOBAL SLASH COMMANDS ---
 const commands = [
     new SlashCommandBuilder()
         .setName('ping')
         .setDescription('Check if Skelerix is online')
-        .setIntegrationTypes([
-            ApplicationIntegrationType.GuildInstall, 
-            ApplicationIntegrationType.UserInstall
-        ])
-        .setContextTypes([
-            InteractionContextType.Guild, 
-            InteractionContextType.BotDM, 
-            InteractionContextType.PrivateChannel
-        ]),
+        .setIntegrationTypes([0, 1])
+        .setContexts([0, 1, 2]),
 
     new SlashCommandBuilder()
         .setName('sai')
@@ -61,28 +44,14 @@ const commands = [
             option.setName('question')
                 .setDescription('The question you want to ask')
                 .setRequired(true))
-        .setIntegrationTypes([
-            ApplicationIntegrationType.GuildInstall, 
-            ApplicationIntegrationType.UserInstall
-        ])
-        .setContextTypes([
-            InteractionContextType.Guild, 
-            InteractionContextType.BotDM, 
-            InteractionContextType.PrivateChannel
-        ]),
+        .setIntegrationTypes([0, 1])
+        .setContexts([0, 1, 2]),
 
     new SlashCommandBuilder()
         .setName('forget')
         .setDescription('Clear Skelerix AI memory for this channel')
-        .setIntegrationTypes([
-            ApplicationIntegrationType.GuildInstall, 
-            ApplicationIntegrationType.UserInstall
-        ])
-        .setContextTypes([
-            InteractionContextType.Guild, 
-            InteractionContextType.BotDM, 
-            InteractionContextType.PrivateChannel
-        ]),
+        .setIntegrationTypes([0, 1])
+        .setContexts([0, 1, 2]),
 
     new SlashCommandBuilder()
         .setName('update')
@@ -90,20 +59,20 @@ const commands = [
         .addStringOption(opt => opt.setName('version').setDescription('Version tag').setRequired(true))
         .addStringOption(opt => opt.setName('title').setDescription('Update title').setRequired(true))
         .addStringOption(opt => opt.setName('changelog').setDescription('Update details').setRequired(true))
-        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-        .setContextTypes([InteractionContextType.Guild]),
+        .setIntegrationTypes([0])
+        .setContexts([0]),
 
     new SlashCommandBuilder()
         .setName('lockdown')
         .setDescription('Lock down text channels (Server Only)')
-        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-        .setContextTypes([InteractionContextType.Guild]),
+        .setIntegrationTypes([0])
+        .setContexts([0]),
 
     new SlashCommandBuilder()
         .setName('unlock')
         .setDescription('Unlock text channels (Server Only)')
-        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-        .setContextTypes([InteractionContextType.Guild])
+        .setIntegrationTypes([0])
+        .setContexts([0])
 ].map(cmd => cmd.toJSON());
 
 // --- REGISTER GLOBAL SLASH COMMANDS ---
@@ -168,14 +137,14 @@ async function checkYouTube() {
     }
 }
 
-// --- SLASH COMMAND HANDLER ---
+// --- SLASH COMMAND & MESSAGE HANDLER ---
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName, options, guild, channel, member, user } = interaction;
     const channelId = channel ? channel.id : user.id;
 
-    // /ping
+    // /ping command handler
     if (commandName === 'ping') {
         return interaction.reply('💀 **Skelerix is active and online!** 🌀');
     }
@@ -301,245 +270,12 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
-try {
-            await message.channel.sendTyping();
+// Listener for text-based >ping command
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
 
-            if (!channelMemories.has(message.channel.id)) {
-                channelMemories.set(message.channel.id, [
-                    {
-                        role: 'system',
-                        content: 'You are Skelerix, an intelligent and helpful Discord server bot assistant. You have memory of the preceding conversation in this channel. Keep answers concise, clear, and direct for Discord chat.'
-                    }
-                ]);
-            }
-
-            const history = channelMemories.get(message.channel.id);
-            history.push({ role: 'user', content: `${message.author.username}: ${prompt}` });
-
-            const completion = await groq.chat.completions.create({
-                messages: history,
-                model: 'llama-3.3-70b-versatile'
-            });
-
-            const reply = completion.choices[0]?.message?.content || 'I could not process that request.';
-            history.push({ role: 'assistant', content: reply });
-
-            // Keep memory capped at 60 messages (plus system prompt)
-            if (history.length > 61) {
-                history.splice(1, 2);
-            }
-
-            if (reply.length > 2000) {
-                message.reply(reply.slice(0, 1995) + '...');
-            } else {
-                message.reply(reply);
-            }
-        } catch (error) {
-            console.error('Groq AI Error:', error);
-            message.reply('❌ Skelerix hit a snag while processing that query. Check server logs.');
-        }
-    }
-
-    // >update Version | Title | Changelog
-    if (message.content.startsWith(`${PREFIX}update `)) {
-        const args = message.content.slice(PREFIX.length + 7).split('|');
-        if (args.length < 3) {
-            return message.reply(`❌ **Format:** \`${PREFIX}update Version | Title | Changelog\``);
-        }
-
-        const version = args[0].trim();
-        const title = args[1].trim();
-        const changelog = args[2].trim();
-
-        const channel = await client.channels.fetch(GAME_UPDATE_CHANNEL_ID);
-        if (!channel) return message.reply('❌ Game update channel not found.');
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🎮 Game Update [${version}]: ${title}`)
-            .setDescription(changelog)
-            .setColor(BRAND_COLOR)
-            .setAuthor({ 
-                name: 'Skelerix Dev Dispatch', 
-                iconURL: client.user.displayAvatarURL() 
-            })
-            .setFooter({ text: 'Skelerix Game Announcements' })
-            .setTimestamp();
-
-        await channel.send({ 
-            content: '📢 **A new game update has landed!**', 
-            embeds: [embed] 
-        });
-
-        message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
-    }
-
-    // >lockdown or >lock
-    if (message.content === `${PREFIX}lockdown` || message.content === `${PREFIX}lock`) {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to lock down.');
-        }
-
-        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
-        const everyoneRole = message.guild.roles.everyone;
-
-        for (const [id, channel] of channels) {
-            try {
-                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: false });
-            } catch (err) {
-                console.error(`Error locking ${channel.name}:`, err);
-            }
-        }
-
-        message.channel.send('Server has been locked down!(✿◠‿◠)');
-    }
-
-    // >unlock
-    if (message.content === `${PREFIX}unlock`) {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to unlock.');
-        }
-
-        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
-        const everyoneRole = message.guild.roles.everyone;
-
-        for (const [id, channel] of channels) {
-            try {
-                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: null });
-            } catch (err) {
-                console.error(`Error unlocking ${channel.name}:`, err);
-            }
-        }
-
-        message.channel.send('Server has been unlocked!(✿◠‿◠)');
-    }
-});
-
-client.login(process.env.DISCORD_TOKEN);
-}
-
-    // AI Ask Command with Memory: >ask [question]
-    if (message.content.startsWith(`${PREFIX}ask `)) {
-        const prompt = message.content.slice(PREFIX.length + 4).trim();
-        if (!prompt) return message.reply('❌ Please provide a question! Example: `>ask Hi, my name is Rob`');
-
-        try {
-            await message.channel.sendTyping();
-
-            // Retrieve or initialize conversation memory for this channel
-            if (!channelMemories.has(message.channel.id)) {
-                channelMemories.set(message.channel.id, [
-                    {
-                        role: 'system',
-                        content: 'You are Skelerix, an intelligent and helpful Discord server bot assistant. You have memory of the preceding conversation in this channel. Keep answers concise, clear, and direct for Discord chat.'
-                    }
-                ]);
-            }
-
-            const history = channelMemories.get(message.channel.id);
-
-            // Add new user message to history
-            history.push({ role: 'user', content: `${message.author.username}: ${prompt}` });
-
-            // Call Groq API with full message history
-            const completion = await groq.chat.completions.create({
-                messages: history,
-                model: 'llama-3.3-70b-versatile'
-            });
-
-            const reply = completion.choices[0]?.message?.content || 'I could not process that request.';
-
-            // Save bot reply to history
-            history.push({ role: 'assistant', content: reply });
-
-            // Keep memory capped at 60 messages (plus system prompt = 61 total)
-            if (history.length > 61) {
-                history.splice(1, 2); // Remove oldest user/assistant pair
-            }
-
-            // Handle Discord 2000-character message limit
-            if (reply.length > 2000) {
-                message.reply(reply.slice(0, 1995) + '...');
-            } else {
-                message.reply(reply);
-            }
-        } catch (error) {
-            console.error('Groq AI Error:', error);
-            message.reply('❌ Skelerix hit a snag while processing that query. Check server logs.');
-        }
-    }
-
-    // Game Update Command: >update Version | Title | Changelog
-    if (message.content.startsWith(`${PREFIX}update `)) {
-        const args = message.content.slice(PREFIX.length + 7).split('|');
-        if (args.length < 3) {
-            return message.reply(`❌ **Format:** \`${PREFIX}update Version | Title | Changelog\``);
-        }
-
-        const version = args[0].trim();
-        const title = args[1].trim();
-        const changelog = args[2].trim();
-
-        const channel = await client.channels.fetch(GAME_UPDATE_CHANNEL_ID);
-        if (!channel) return message.reply('❌ Game update channel not found.');
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🎮 Game Update [${version}]: ${title}`)
-            .setDescription(changelog)
-            .setColor(BRAND_COLOR)
-            .setAuthor({ 
-                name: 'Skelerix Dev Dispatch', 
-                iconURL: client.user.displayAvatarURL() 
-            })
-            .setFooter({ text: 'Skelerix Game Announcements' })
-            .setTimestamp();
-
-        await channel.send({ 
-            content: '📢 **A new game update has landed!**', 
-            embeds: [embed] 
-        });
-
-        message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
-    }
-
-    // Lockdown Command: >lockdown
-    if (message.content === `${PREFIX}lockdown` || message.content === `${PREFIX}lock`) {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to lock down.');
-        }
-
-        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
-        const everyoneRole = message.guild.roles.everyone;
-
-        for (const [id, channel] of channels) {
-            try {
-                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: false });
-            } catch (err) {
-                console.error(`Error locking ${channel.name}:`, err);
-            }
-        }
-
-        message.channel.send('Server has been locked down!(✿◠‿◠)');
-    }
-
-    // Unlock Command: >unlock
-    if (message.content === `${PREFIX}unlock`) {
-        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to unlock.');
-        }
-
-        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
-        const everyoneRole = message.guild.roles.everyone;
-
-        for (const [id, channel] of channels) {
-            try {
-                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: null });
-            } catch (err) {
-                console.error(`Error unlocking ${channel.name}:`, err);
-            }
-        }
-
-        message.channel.send('Server has been unlocked!(✿◠‿◠)');
+    if (message.content.trim() === '>ping' || message.content.trim() === '> ping') {
+        return message.reply('💀 **Skelerix is active and online!** 🌀');
     }
 });
 
