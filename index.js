@@ -93,7 +93,7 @@ client.on('messageCreate', async message => {
 
     // Ping Check: >ping
     if (message.content === `${PREFIX}ping`) {
-        return message.reply('💀 **Skelerix is active and online!** 🏓');
+        return message.reply('💀 **Skelerix is active and online!** 🌀');
     }
 
     // Reset AI Memory Command: >forget
