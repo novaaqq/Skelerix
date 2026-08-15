@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const Parser = require('rss-parser');
 const http = require('http');
 
@@ -19,6 +19,8 @@ const client = new Client({
 const parser = new Parser();
 
 // --- CONFIGURATION ---
+const PREFIX = '⛥'; // Skelerix's custom prefix
+
 const YOUTUBE_ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // YouTube videos go here
 const GAME_UPDATE_CHANNEL_ID = '1536854230239805605';         // Game updates go here
 
@@ -28,7 +30,7 @@ const BRAND_COLOR = 0x0099FF; // Blue theme
 let lastVideoId = '';
 
 client.once('ready', () => {
-    console.log(`Skelerix is online and listening as ${client.user.tag}!`);
+    console.log(`Skelerix is online and listening as ${client.user.tag}! Prefix is set to: ${PREFIX}`);
     
     // Check YouTube feed every 5 minutes
     checkYouTube();
@@ -81,19 +83,18 @@ async function checkYouTube() {
 
 // --- COMMANDS ---
 client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.guild) return;
 
-    // Ping Check
-    if (message.content === '!ping') {
-        message.reply('💀 **Skelerix is active and online!** 🌀');
+    // Ping Check: ⛥ping
+    if (message.content === `${PREFIX}ping`) {
+        message.reply('💀 **Skelerix is active and online!** 🏓');
     }
 
-    // Game Update Command: !update Version | Title | Changelog
-    // Example: !update v1.0 | Big Patch | - Added combat mechanics\n- Fixed UI bugs
-    if (message.content.startsWith('!update ')) {
-        const args = message.content.slice(8).split('|');
+    // Game Update Command: ⛥update Version | Title | Changelog
+    if (message.content.startsWith(`${PREFIX}update `)) {
+        const args = message.content.slice(PREFIX.length + 7).split('|');
         if (args.length < 3) {
-            return message.reply('❌ **Format:** `!update Version | Title | Changelog`');
+            return message.reply(`❌ **Format:** \`${PREFIX}update Version | Title | Changelog\``);
         }
 
         const version = args[0].trim();
@@ -120,6 +121,50 @@ client.on('messageCreate', async message => {
         });
 
         message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
+    }
+
+    // --- LOCKDOWN COMMAND ---
+    if (message.content === `${PREFIX}lockdown` || message.content === `${PREFIX}lock`) {
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+            return message.reply('❌ You need the `Manage Channels` permission to use lockdown.');
+        }
+
+        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
+        const everyoneRole = message.guild.roles.everyone;
+
+        for (const [id, channel] of channels) {
+            try {
+                await channel.permissionOverwrites.edit(everyoneRole, {
+                    SendMessages: false
+                });
+            } catch (err) {
+                console.error(`Could not lock channel ${channel.name}:`, err);
+            }
+        }
+
+        message.channel.send('Server has been locked down!(✿◠‿◠)');
+    }
+
+    // --- UNLOCK COMMAND ---
+    if (message.content === `${PREFIX}unlock`) {
+        if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+            return message.reply('❌ You need the `Manage Channels` permission to use unlock.');
+        }
+
+        const channels = message.guild.channels.cache.filter(c => c.isTextBased());
+        const everyoneRole = message.guild.roles.everyone;
+
+        for (const [id, channel] of channels) {
+            try {
+                await channel.permissionOverwrites.edit(everyoneRole, {
+                    SendMessages: null // Resets to default
+                });
+            } catch (err) {
+                console.error(`Could not unlock channel ${channel.name}:`, err);
+            }
+        }
+
+        message.channel.send('Server has been unlocked!(✿◠‿◠)');
     }
 });
 
