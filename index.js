@@ -1,3 +1,4 @@
+
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const Parser = require('rss-parser');
 const http = require('http');
@@ -21,7 +22,7 @@ const parser = new Parser();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // --- CONFIGURATION ---
-const PREFIX = '⛥'; 
+const PREFIX = '>'; // Skelerix prefix
 
 const YOUTUBE_ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // YouTube channel
 const GAME_UPDATE_CHANNEL_ID = '1536854230239805605';         // Game update channel
@@ -31,13 +32,16 @@ const BRAND_COLOR = 0x0099FF; // Blue theme
 
 let lastVideoId = '';
 
+// In-memory conversation store (Per-channel)
+const channelMemories = new Map();
+
 client.once('ready', () => {
     console.log(`Skelerix is online and listening as ${client.user.tag}! Prefix: ${PREFIX}`);
     
-    // Initial check
+    // Initial YouTube check
     checkYouTube();
 
-    // Check YouTube feed every 10 seconds (Lowest safe interval)
+    // Check YouTube feed every 10 seconds
     setInterval(checkYouTube, 10 * 1000);
 });
 
@@ -87,35 +91,56 @@ async function checkYouTube() {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // Ping Check: ⛥ping
+    // Ping Check: >ping
     if (message.content === `${PREFIX}ping`) {
-        message.reply('💀 **Skelerix is active and online!** 🌀');
+        return message.reply('💀 **Skelerix is active and online!** 🏓');
     }
 
-    // AI Ask Command: ⛥ask [question]
+    // Reset AI Memory Command: >forget
+    if (message.content === `${PREFIX}forget`) {
+        channelMemories.delete(message.channel.id);
+        return message.reply('🧠 **Skelerix memory cleared for this channel!**');
+    }
+
+    // AI Ask Command with Memory: >ask [question]
     if (message.content.startsWith(`${PREFIX}ask `)) {
         const prompt = message.content.slice(PREFIX.length + 4).trim();
-        if (!prompt) return message.reply('❌ Please provide a question! Example: `⛥ask How do hitboxes work?`');
+        if (!prompt) return message.reply('❌ Please provide a question! Example: `>ask Hi, my name is Rob`');
 
         try {
             await message.channel.sendTyping();
 
-            const completion = await groq.chat.completions.create({
-                messages: [
+            // Retrieve or initialize conversation memory for this channel
+            if (!channelMemories.has(message.channel.id)) {
+                channelMemories.set(message.channel.id, [
                     {
                         role: 'system',
-                        content: 'You are Skelerix, an intelligent and helpful Discord server bot assistant. Keep answers concise, clear, and direct for Discord chat.'
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
+                        content: 'You are Skelerix, an intelligent and helpful Discord server bot assistant. You have memory of the preceding conversation in this channel. Keep answers concise, clear, and direct for Discord chat.'
                     }
-                ],
+                ]);
+            }
+
+            const history = channelMemories.get(message.channel.id);
+
+            // Add new user message to history
+            history.push({ role: 'user', content: `${message.author.username}: ${prompt}` });
+
+            // Call Groq API with full message history
+            const completion = await groq.chat.completions.create({
+                messages: history,
                 model: 'llama-3.3-70b-versatile'
             });
 
             const reply = completion.choices[0]?.message?.content || 'I could not process that request.';
-            
+
+            // Save bot reply to history
+            history.push({ role: 'assistant', content: reply });
+
+            // Keep memory capped at 60 messages (plus system prompt = 61 total)
+            if (history.length > 61) {
+                history.splice(1, 2); // Remove oldest user/assistant pair
+            }
+
             // Handle Discord 2000-character message limit
             if (reply.length > 2000) {
                 message.reply(reply.slice(0, 1995) + '...');
@@ -128,7 +153,7 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // Game Update Command: ⛥update Version | Title | Changelog
+    // Game Update Command: >update Version | Title | Changelog
     if (message.content.startsWith(`${PREFIX}update `)) {
         const args = message.content.slice(PREFIX.length + 7).split('|');
         if (args.length < 3) {
@@ -161,7 +186,7 @@ client.on('messageCreate', async message => {
         message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
     }
 
-    // Lockdown Command: ⛥lockdown
+    // Lockdown Command: >lockdown
     if (message.content === `${PREFIX}lockdown` || message.content === `${PREFIX}lock`) {
         if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
             return message.reply('❌ You need the `Manage Channels` permission to lock down.');
@@ -181,7 +206,7 @@ client.on('messageCreate', async message => {
         message.channel.send('Server has been locked down!(✿◠‿◠)');
     }
 
-    // Unlock Command: ⛥unlock
+    // Unlock Command: >unlock
     if (message.content === `${PREFIX}unlock`) {
         if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
             return message.reply('❌ You need the `Manage Channels` permission to unlock.');
