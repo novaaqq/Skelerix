@@ -89,7 +89,7 @@ client.on('messageCreate', async message => {
 
     // Ping Check: ⛥ping
     if (message.content === `${PREFIX}ping`) {
-        message.reply('💀 **Skelerix is active and online!** 🏓');
+        message.reply('💀 **Skelerix is active and online!** 🌀');
     }
 
     // AI Ask Command: ⛥ask [question]
