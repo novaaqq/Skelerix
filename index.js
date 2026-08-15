@@ -19,8 +19,10 @@ const client = new Client({
 const parser = new Parser();
 
 // --- CONFIGURATION ---
-const ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // Discord Channel ID
-const YOUTUBE_CHANNEL_ID = 'UCcX_U3PVmP7KTiIhqJ9_8kg';   // YouTube Channel ID
+const YOUTUBE_ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // YouTube videos go here
+const GAME_UPDATE_CHANNEL_ID = '1536854230239805605';         // Game updates go here
+
+const YOUTUBE_CHANNEL_ID = 'UCcX_U3PVmP7KTiIhqJ9_8kg'; // Your YouTube Channel ID
 const BRAND_COLOR = 0x0099FF; // Blue theme
 
 let lastVideoId = '';
@@ -52,7 +54,7 @@ async function checkYouTube() {
         if (lastVideoId !== videoId) {
             lastVideoId = videoId;
 
-            const channel = await client.channels.fetch(ANNOUNCEMENT_CHANNEL_ID);
+            const channel = await client.channels.fetch(YOUTUBE_ANNOUNCEMENT_CHANNEL_ID);
             if (!channel) return;
 
             const embed = new EmbedBuilder()
@@ -83,7 +85,7 @@ client.on('messageCreate', async message => {
 
     // Ping Check
     if (message.content === '!ping') {
-        message.reply('💀 **Skelerix is active and online!** 🏓');
+        message.reply('💀 **Skelerix is active and online!** 🌀');
     }
 
     // Game Update Command: !update Version | Title | Changelog
@@ -98,8 +100,8 @@ client.on('messageCreate', async message => {
         const title = args[1].trim();
         const changelog = args[2].trim();
 
-        const channel = await client.channels.fetch(ANNOUNCEMENT_CHANNEL_ID);
-        if (!channel) return message.reply('Channel not found.');
+        const channel = await client.channels.fetch(GAME_UPDATE_CHANNEL_ID);
+        if (!channel) return message.reply('❌ Game update channel not found.');
 
         const embed = new EmbedBuilder()
             .setTitle(`🎮 Game Update [${version}]: ${title}`)
@@ -115,10 +117,9 @@ client.on('messageCreate', async message => {
         await channel.send({ 
             content: '📢 **A new game update has landed!**', 
             embeds: [embed] 
-            
         });
 
-        message.reply('✅ Game update posted by Skelerix!');
+        message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
     }
 });
 
