@@ -1,8 +1,9 @@
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const Parser = require('rss-parser');
 const http = require('http');
+const Groq = require('groq-sdk');
 
-// Web server for Render health checks
+// Web server for Render health check
 http.createServer((req, res) => {
     res.write("Skelerix is online and operational!");
     res.end();
@@ -17,27 +18,30 @@ const client = new Client({
 });
 
 const parser = new Parser();
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // --- CONFIGURATION ---
-const PREFIX = '⛥'; // Skelerix's custom prefix
+const PREFIX = '⛥'; 
 
-const YOUTUBE_ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // YouTube videos go here
-const GAME_UPDATE_CHANNEL_ID = '1536854230239805605';         // Game updates go here
+const YOUTUBE_ANNOUNCEMENT_CHANNEL_ID = '1536854741756284958'; // YouTube channel
+const GAME_UPDATE_CHANNEL_ID = '1536854230239805605';         // Game update channel
 
-const YOUTUBE_CHANNEL_ID = 'UCcX_U3PVmP7KTiIhqJ9_8kg'; // Your YouTube Channel ID
+const YOUTUBE_CHANNEL_ID = 'UCcX_U3PVmP7KTiIhqJ9_8kg'; // YouTube Channel ID
 const BRAND_COLOR = 0x0099FF; // Blue theme
 
 let lastVideoId = '';
 
 client.once('ready', () => {
-    console.log(`Skelerix is online and listening as ${client.user.tag}! Prefix is set to: ${PREFIX}`);
+    console.log(`Skelerix is online and listening as ${client.user.tag}! Prefix: ${PREFIX}`);
     
-    // Check YouTube feed every 5 minutes
+    // Initial check
     checkYouTube();
-    setInterval(checkYouTube, 5 * 60 * 1000);
+
+    // Check YouTube feed every 10 seconds (Lowest safe interval)
+    setInterval(checkYouTube, 10 * 1000);
 });
 
-// --- AUTOMATED YOUTUBE ANNOUNCEMENTS ---
+// --- YOUTUBE ANNOUNCEMENTS ---
 async function checkYouTube() {
     try {
         const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${YOUTUBE_CHANNEL_ID}`);
@@ -46,13 +50,11 @@ async function checkYouTube() {
         const latestVideo = feed.items[0];
         const videoId = latestVideo.id.split(':')[2];
 
-        // Store latest video on startup without posting old videos
         if (lastVideoId === '') {
             lastVideoId = videoId;
             return;
         }
 
-        // Send alert on new upload
         if (lastVideoId !== videoId) {
             lastVideoId = videoId;
 
@@ -90,6 +92,42 @@ client.on('messageCreate', async message => {
         message.reply('💀 **Skelerix is active and online!** 🏓');
     }
 
+    // AI Ask Command: ⛥ask [question]
+    if (message.content.startsWith(`${PREFIX}ask `)) {
+        const prompt = message.content.slice(PREFIX.length + 4).trim();
+        if (!prompt) return message.reply('❌ Please provide a question! Example: `⛥ask How do hitboxes work?`');
+
+        try {
+            await message.channel.sendTyping();
+
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'You are Skelerix, an intelligent and helpful Discord server bot assistant. Keep answers concise, clear, and direct for Discord chat.'
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                model: 'llama-3.3-70b-versatile'
+            });
+
+            const reply = completion.choices[0]?.message?.content || 'I could not process that request.';
+            
+            // Handle Discord 2000-character message limit
+            if (reply.length > 2000) {
+                message.reply(reply.slice(0, 1995) + '...');
+            } else {
+                message.reply(reply);
+            }
+        } catch (error) {
+            console.error('Groq AI Error:', error);
+            message.reply('❌ Skelerix hit a snag while processing that query. Check server logs.');
+        }
+    }
+
     // Game Update Command: ⛥update Version | Title | Changelog
     if (message.content.startsWith(`${PREFIX}update `)) {
         const args = message.content.slice(PREFIX.length + 7).split('|');
@@ -123,10 +161,10 @@ client.on('messageCreate', async message => {
         message.reply(`✅ Game update posted to <#${GAME_UPDATE_CHANNEL_ID}> by Skelerix!`);
     }
 
-    // --- LOCKDOWN COMMAND ---
+    // Lockdown Command: ⛥lockdown
     if (message.content === `${PREFIX}lockdown` || message.content === `${PREFIX}lock`) {
         if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to use lockdown.');
+            return message.reply('❌ You need the `Manage Channels` permission to lock down.');
         }
 
         const channels = message.guild.channels.cache.filter(c => c.isTextBased());
@@ -134,21 +172,19 @@ client.on('messageCreate', async message => {
 
         for (const [id, channel] of channels) {
             try {
-                await channel.permissionOverwrites.edit(everyoneRole, {
-                    SendMessages: false
-                });
+                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: false });
             } catch (err) {
-                console.error(`Could not lock channel ${channel.name}:`, err);
+                console.error(`Error locking ${channel.name}:`, err);
             }
         }
 
         message.channel.send('Server has been locked down!(✿◠‿◠)');
     }
 
-    // --- UNLOCK COMMAND ---
+    // Unlock Command: ⛥unlock
     if (message.content === `${PREFIX}unlock`) {
         if (!message.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-            return message.reply('❌ You need the `Manage Channels` permission to use unlock.');
+            return message.reply('❌ You need the `Manage Channels` permission to unlock.');
         }
 
         const channels = message.guild.channels.cache.filter(c => c.isTextBased());
@@ -156,11 +192,9 @@ client.on('messageCreate', async message => {
 
         for (const [id, channel] of channels) {
             try {
-                await channel.permissionOverwrites.edit(everyoneRole, {
-                    SendMessages: null // Resets to default
-                });
+                await channel.permissionOverwrites.edit(everyoneRole, { SendMessages: null });
             } catch (err) {
-                console.error(`Could not unlock channel ${channel.name}:`, err);
+                console.error(`Error unlocking ${channel.name}:`, err);
             }
         }
 
