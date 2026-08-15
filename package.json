@@ -6,6 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
+    "rss-parser": "^3.13.0"
   }
 }
