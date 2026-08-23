@@ -1,13 +1,12 @@
 {
-  "name": "discord-bot",
+  "name": "skelerix-bot",
   "version": "1.0.0",
+  "description": "Skelerix Discord AI Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "rss-parser": "^3.13.0",
-    "groq-sdk": "^0.3.0"
+    "discord.js": "^14.14.0"
   }
 }
