@@ -20,9 +20,10 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
+// Skelerix's Personality Instruction
 const SYSTEM_INSTRUCTION = "You are Skelerix, a sharp, witty, and cool AI assistant built into the Discord community server. Keep responses brief, clear, and punchy, and remember the context of the ongoing conversation.";
 
-// Gemini API Integration
+// Gemini API Integration using gemini-3.6-flash
 async function askAI(systemPrompt, userPrompt) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: 'POST',
@@ -40,19 +41,23 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates[0]?.content?.parts[0]?.text || "No response generated.";
 }
 
-// Multi-RSS Checker
+// Multi-RSS Checker with Fallback URLs
 async function checkRSSFeeds() {
     const channelId = process.env.RSS_CHANNEL_ID;
     if (!channelId) return;
 
     const feeds = [
-        { url: process.env.TIKTOK_RSS_URL, name: 'TikTok' },
-        { url: process.env.YOUTUBE_RSS_URL, name: 'YouTube' }
+        { 
+            url: process.env.TIKTOK_RSS_URL || 'https://rss.app/feeds/hhxRmx1xY5LYoRFb.xml', 
+            name: 'TikTok' 
+        },
+        { 
+            url: process.env.YOUTUBE_RSS_URL || 'https://rss.app/feeds/Ijo0kZenkp40O5st.xml', 
+            name: 'YouTube' 
+        }
     ];
 
     for (const feedConfig of feeds) {
-        if (!feedConfig.url) continue;
-
         try {
             const feed = await parser.parseURL(feedConfig.url);
             if (!feed.items || feed.items.length === 0) continue;
@@ -89,7 +94,7 @@ const commands = [
     new SlashCommandBuilder().setName('ping').setDescription('Check Skelerix status and latency.')
 ].map(c => c.toJSON());
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
     
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
