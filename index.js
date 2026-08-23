@@ -1,9 +1,6 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const Parser = require('rss-parser');
-
-const parser = new Parser();
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 // Track the latest post ID for each feed separately
 const lastGUIDs = {
@@ -41,7 +38,25 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates[0]?.content?.parts[0]?.text || "No response generated.";
 }
 
-// Multi-RSS Checker with Hardcoded URLs
+// Lightweight Native RSS Parser (Bypasses external parser bugs)
+async function fetchRSS(url) {
+    const response = await fetch(url);
+    const text = await response.text();
+    
+    // Extract first item title and link using simple XML regex matching
+    const titleMatch = text.match(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/);
+    const linkMatch = text.match(/<item>[\s\S]*?<link>([\s\S]*?)<\/link>/);
+    
+    if (!titleMatch || !linkMatch) return null;
+    
+    // Clean up CDATA wrappers if present
+    const title = titleMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+    const link = linkMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+    
+    return { title, link, id: link };
+}
+
+// Multi-RSS Checker using Native Fetch
 async function checkRSSFeeds() {
     const channelId = process.env.RSS_CHANNEL_ID;
     if (!channelId) return;
@@ -53,20 +68,17 @@ async function checkRSSFeeds() {
 
     for (const feedConfig of feeds) {
         try {
-            const feed = await parser.parseURL(feedConfig.url);
-            if (!feed.items || feed.items.length === 0) continue;
+            const latestItem = await fetchRSS(feedConfig.url);
+            if (!latestItem) continue;
 
-            const latestItem = feed.items[0];
-            const itemID = latestItem.guid || latestItem.link || latestItem.title;
-
-            if (lastGUIDs[feedConfig.name] === itemID) continue;
+            if (lastGUIDs[feedConfig.name] === latestItem.id) continue;
 
             if (lastGUIDs[feedConfig.name] === null) {
-                lastGUIDs[feedConfig.name] = itemID;
+                lastGUIDs[feedConfig.name] = latestItem.id;
                 continue;
             }
 
-            lastGUIDs[feedConfig.name] = itemID;
+            lastGUIDs[feedConfig.name] = latestItem.id;
 
             const channel = await client.channels.fetch(channelId);
             if (channel) {
@@ -83,27 +95,15 @@ const SERVER_ID = '1536852734374846645';
 
 // Slash Commands Configuration
 const commands = [
-    new SlashCommandBuilder()
-        .setName('sai')
-        .setDescription('Ask Skelerix AI a direct question.')
+    new SlashCommandBuilder().setName('sai').setDescription('Ask Skelerix AI a direct question.')
         .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
-    new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Check Skelerix status and latency.'),
-    new SlashCommandBuilder()
-        .setName('coinflip')
-        .setDescription('Flip a coin! Heads or Tails?'),
-    new SlashCommandBuilder()
-        .setName('roll')
-        .setDescription('Roll a dice.')
+    new SlashCommandBuilder().setName('ping').setDescription('Check Skelerix status and latency.'),
+    new SlashCommandBuilder().setName('coinflip').setDescription('Flip a coin! Heads or Tails?'),
+    new SlashCommandBuilder().setName('roll').setDescription('Roll a dice.')
         .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
-    new SlashCommandBuilder()
-        .setName('poll')
-        .setDescription('Create a quick interactive poll.')
+    new SlashCommandBuilder().setName('poll').setDescription('Create a quick interactive poll.')
         .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
-    new SlashCommandBuilder()
-        .setName('serverinfo')
-        .setDescription('Check out community stats.')
+    new SlashCommandBuilder().setName('serverinfo').setDescription('Check out community stats.')
 ].map(c => c.toJSON());
 
 client.once('clientReady', async () => {
