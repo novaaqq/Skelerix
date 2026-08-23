@@ -120,7 +120,8 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.commandName === 'ping') {
         const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
-        await interaction.editReply(`Pong! ☠️ Latency: **${sent.createdTimestamp - interaction.createdTimestamp}ms**`);
+        await interaction.editReply(`Pong! ☠️ Skelerix is active and online! 🌀 
+Latency: **${sent.createdTimestamp - interaction.createdTimestamp}ms**`);
     }
 
     if (interaction.commandName === 'sai') {
