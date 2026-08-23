@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const Parser = require('rss-parser');
 
 const parser = new Parser();
@@ -41,20 +41,14 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates[0]?.content?.parts[0]?.text || "No response generated.";
 }
 
-// Multi-RSS Checker with Fallback URLs
+// Multi-RSS Checker with Hardcoded URLs
 async function checkRSSFeeds() {
     const channelId = process.env.RSS_CHANNEL_ID;
     if (!channelId) return;
 
     const feeds = [
-        { 
-            url: process.env.TIKTOK_RSS_URL || 'https://rss.app/feeds/hhxRmx1xY5LYoRFb.xml', 
-            name: 'TikTok' 
-        },
-        { 
-            url: process.env.YOUTUBE_RSS_URL || 'https://rss.app/feeds/Ijo0kZenkp40O5st.xml', 
-            name: 'YouTube' 
-        }
+        { url: 'https://rss.app/feeds/hhxRmx1xY5LYoRFb.xml', name: 'TikTok' },
+        { url: 'https://rss.app/feeds/Ijo0kZenkp40O5st.xml', name: 'YouTube' }
     ];
 
     for (const feedConfig of feeds) {
@@ -65,10 +59,8 @@ async function checkRSSFeeds() {
             const latestItem = feed.items[0];
             const itemID = latestItem.guid || latestItem.link || latestItem.title;
 
-            // Skip if this specific update was already posted
             if (lastGUIDs[feedConfig.name] === itemID) continue;
 
-            // Set baseline on startup without spamming
             if (lastGUIDs[feedConfig.name] === null) {
                 lastGUIDs[feedConfig.name] = itemID;
                 continue;
@@ -88,10 +80,30 @@ async function checkRSSFeeds() {
 }
 
 const SERVER_ID = '1536852734374846645';
+
+// Slash Commands Configuration
 const commands = [
-    new SlashCommandBuilder().setName('sai').setDescription('Ask Skelerix AI a direct question.')
+    new SlashCommandBuilder()
+        .setName('sai')
+        .setDescription('Ask Skelerix AI a direct question.')
         .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
-    new SlashCommandBuilder().setName('ping').setDescription('Check Skelerix status and latency.')
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Check Skelerix status and latency.'),
+    new SlashCommandBuilder()
+        .setName('coinflip')
+        .setDescription('Flip a coin! Heads or Tails?'),
+    new SlashCommandBuilder()
+        .setName('roll')
+        .setDescription('Roll a dice.')
+        .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
+    new SlashCommandBuilder()
+        .setName('poll')
+        .setDescription('Create a quick interactive poll.')
+        .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('serverinfo')
+        .setDescription('Check out community stats.')
 ].map(c => c.toJSON());
 
 client.once('clientReady', async () => {
@@ -100,12 +112,11 @@ client.once('clientReady', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id, SERVER_ID), { body: commands });
-        console.log('[LOG] Commands registered successfully.');
+        console.log('[LOG] Commands registered cleanly.');
     } catch (err) { 
         console.error('[ERROR] Failed to register commands:', err); 
     }
 
-    // Run RSS check at startup, then check every 10 minutes
     checkRSSFeeds();
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
@@ -147,6 +158,32 @@ client.on('interactionCreate', async interaction => {
         } catch (err) {
             await interaction.editReply(`❌ Error: ${err.message}`);
         }
+    }
+
+    if (interaction.commandName === 'coinflip') {
+        const result = Math.random() < 0.5 ? '🪙 **Heads!**' : '🪙 **Tails!**';
+        await interaction.reply(`The coin landed on: ${result}`);
+    }
+
+    if (interaction.commandName === 'roll') {
+        const sides = interaction.options.getInteger('sides') || 6;
+        const roll = Math.floor(Math.random() * sides) + 1;
+        await interaction.reply(`🎲 Rolled a d${sides}: **${roll}**`);
+    }
+
+    if (interaction.commandName === 'poll') {
+        const question = interaction.options.getString('question');
+        const pollMessage = await interaction.reply({ 
+            content: `📊 **Community Poll:**\n> ${question}\n\n*(Vote using reactions below!)*`, 
+            fetchReply: true 
+        });
+        await pollMessage.react('👍');
+        await pollMessage.react('👎');
+    }
+
+    if (interaction.commandName === 'serverinfo') {
+        const { guild } = interaction;
+        await interaction.reply(`🛡️ **${guild.name}** stats:\n👥 Members: **${guild.memberCount}**\n🚀 Boost Level: **Tier ${guild.premiumTier}** (${guild.premiumSubscriptionCount} boosts)`);
     }
 });
 
