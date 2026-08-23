@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 // Track the latest post ID for each feed separately
 const lastGUIDs = {
@@ -38,22 +38,24 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates[0]?.content?.parts[0]?.text || "No response generated.";
 }
 
-// Lightweight Native RSS Parser (Bypasses external parser bugs)
+// Lightweight Native RSS Parser
 async function fetchRSS(url) {
-    const response = await fetch(url);
-    const text = await response.text();
-    
-    // Extract first item title and link using simple XML regex matching
-    const titleMatch = text.match(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/);
-    const linkMatch = text.match(/<item>[\s\S]*?<link>([\s\S]*?)<\/link>/);
-    
-    if (!titleMatch || !linkMatch) return null;
-    
-    // Clean up CDATA wrappers if present
-    const title = titleMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-    const link = linkMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-    
-    return { title, link, id: link };
+    try {
+        const response = await fetch(url);
+        const text = await response.text();
+        
+        const titleMatch = text.match(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/);
+        const linkMatch = text.match(/<item>[\s\S]*?<link>([\s\S]*?)<\/link>/);
+        
+        if (!titleMatch || !linkMatch) return null;
+        
+        const title = titleMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+        const link = linkMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+        
+        return { title, link, id: link };
+    } catch (err) {
+        return null;
+    }
 }
 
 // Multi-RSS Checker using Native Fetch
@@ -93,7 +95,7 @@ async function checkRSSFeeds() {
 
 const SERVER_ID = '1536852734374846645';
 
-// Slash Commands Configuration
+// Unique Slash Commands Configuration
 const commands = [
     new SlashCommandBuilder().setName('sai').setDescription('Ask Skelerix AI a direct question.')
         .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
@@ -103,7 +105,11 @@ const commands = [
         .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
     new SlashCommandBuilder().setName('poll').setDescription('Create a quick interactive poll.')
         .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
-    new SlashCommandBuilder().setName('serverinfo').setDescription('Check out community stats.')
+    new SlashCommandBuilder().setName('serverinfo').setDescription('Check out community stats.'),
+    new SlashCommandBuilder().setName('timeout').setDescription('Timeout a disruptive user.')
+        .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
+        .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
 ].map(c => c.toJSON());
 
 client.once('clientReady', async () => {
@@ -111,8 +117,9 @@ client.once('clientReady', async () => {
     
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
+        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
         await rest.put(Routes.applicationCommands(client.user.id, SERVER_ID), { body: commands });
-        console.log('[LOG] Commands registered cleanly.');
+        console.log('[LOG] Commands registered cleanly and duplicates cleared.');
     } catch (err) { 
         console.error('[ERROR] Failed to register commands:', err); 
     }
@@ -129,7 +136,8 @@ client.on('messageCreate', async message => {
 
     try {
         await message.channel.sendTyping();
-        const fetched = await message.channel.messages.fetch({ limit: 6 });
+        // Fetching the last 60 messages for deep context tracking
+        const fetched = await message.channel.messages.fetch({ limit: 60 });
         const history = Array.from(fetched.values()).reverse().map(m => `${m.author.username}: ${m.content}`).join('\n');
         
         const replyText = await askAI(SYSTEM_INSTRUCTION, `Recent chat:\n${history}\n\nRespond to ${message.author.username}: "${query}"`);
@@ -184,6 +192,23 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'serverinfo') {
         const { guild } = interaction;
         await interaction.reply(`🛡️ **${guild.name}** stats:\n👥 Members: **${guild.memberCount}**\n🚀 Boost Level: **Tier ${guild.premiumTier}** (${guild.premiumSubscriptionCount} boosts)`);
+    }
+
+    if (interaction.commandName === 'timeout') {
+        const targetUser = interaction.options.getMember('user');
+        const minutes = interaction.options.getInteger('duration');
+
+        if (!targetUser) {
+            return interaction.reply({ content: "❌ User not found in this server.", ephemeral: true });
+        }
+
+        try {
+            const durationMs = minutes * 60 * 1000;
+            await targetUser.timeout(durationMs, `Timed out by ${interaction.user.tag}`);
+            await interaction.reply(`🔇 Successfully timed out **${targetUser.user.tag}** for **${minutes} minute(s)**.`);
+        } catch (err) {
+            await interaction.reply({ content: `❌ Failed to timeout user: ${err.message}`, ephemeral: true });
+        }
     }
 });
 
