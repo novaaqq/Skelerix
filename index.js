@@ -1,4 +1,3 @@
-
 require('dotenv').config();
 const { 
     Client, 
@@ -88,9 +87,9 @@ async function checkRSSFeeds() {
     if (!channelId) return;
 
     const feeds = [
-        { url: 'https://rss.app/feeds/hhxRmx1xY5LYoRFb.xml', name: 'TikTok' },
-        { url: 'https://rss.app/feeds/Ijo0kZenkp40O5st.xml', name: 'YouTube' }
-    ];
+        { url: process.env.TIKTOK_RSS_URL, name: 'TikTok' },
+        { url: process.env.YOUTUBE_RSS_URL, name: 'YouTube' }
+    ].filter(feed => feed.url);
 
     for (const feed of feeds) {
         const item = await fetchRSS(feed.url);
