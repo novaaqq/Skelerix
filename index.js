@@ -69,8 +69,6 @@ async function checkRSSFeeds() {
     }
 }
 
-const SERVER_ID = '1536852734374846645';
-
 const commands = [
     new SlashCommandBuilder().setName('sai').setDescription('Ask Skelerix AI a direct question.')
         .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
@@ -94,11 +92,11 @@ client.once('clientReady', async () => {
     
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-        await rest.put(Routes.applicationCommands(client.user.id, SERVER_ID), { body: commands });
-        console.log('[LOG] Commands registered cleanly.');
+        // Register commands globally across all servers the bot is in
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log('[LOG] Global commands registered successfully.');
     } catch (err) { 
-        console.error('[ERROR] Command registration failed:', err); 
+        console.error('[ERROR] Global command registration failed:', err); 
     }
 
     checkRSSFeeds();
@@ -131,7 +129,6 @@ client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     if (interaction.commandName === 'tape') {
-        // Check if user is the server owner
         if (interaction.user.id !== interaction.guild.ownerId) {
             return interaction.reply({ content: "❌ Only the server owner can tape Skelerix's mouth!", ephemeral: true });
         }
