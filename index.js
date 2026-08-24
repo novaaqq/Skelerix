@@ -1,3 +1,4 @@
+require('./deploy-commands.js');
 require('dotenv').config();
 const { 
     Client, 
