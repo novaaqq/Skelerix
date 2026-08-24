@@ -92,11 +92,17 @@ client.once('clientReady', async () => {
     
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        // Register commands globally across all servers the bot is in
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('[LOG] Global commands registered successfully.');
+        // 1. Completely wipe old global commands cache
+        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
+        console.log('[LOG] Cleared old global command cache.');
+
+        // 2. Re-register clean list after 2 seconds
+        setTimeout(async () => {
+            await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+            console.log('[LOG] Clean global commands registered successfully.');
+        }, 2000);
     } catch (err) { 
-        console.error('[ERROR] Global command registration failed:', err); 
+        console.error('[ERROR] Command registration failed:', err); 
     }
 
     checkRSSFeeds();
