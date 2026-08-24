@@ -3,6 +3,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 const lastGUIDs = { TikTok: null, YouTube: null };
+let isTaped = false; // Tracks if Skelerix's mouth is taped
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -10,6 +11,11 @@ const client = new Client({
 });
 
 const SYSTEM_INSTRUCTION = "You are Skelerix, a sharp, witty, and cool AI assistant built into the Discord community server. Keep responses brief, clear, and punchy, and remember the context of the ongoing conversation.";
+
+const MUFFLES = ["*Mmf!*", "*Mphf mmrgh!*", "*Mmm-mph!*", "*Hmph!*", "*Mmmph...*", "*Muffled angry noises*"];
+function getRandomMuffle() {
+    return MUFFLES[Math.floor(Math.random() * MUFFLES.length)];
+}
 
 // Fast Gemini API Handler using direct fetch
 async function askAI(systemPrompt, userPrompt) {
@@ -78,7 +84,9 @@ const commands = [
     new SlashCommandBuilder().setName('timeout').setDescription('Timeout a disruptive user.')
         .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
         .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+    new SlashCommandBuilder().setName('tape').setDescription('Put tape over Skelerix\'s mouth (Owner only).')
+        .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
 ].map(c => c.toJSON());
 
 client.once('clientReady', async () => {
@@ -100,6 +108,10 @@ client.once('clientReady', async () => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
+    if (isTaped) {
+        return message.reply({ content: `📦 **${getRandomMuffle()}** *(Skelerix's mouth is taped shut!)*`, allowedMentions: { repliedUser: true } });
+    }
+
     const query = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!query) return message.reply({ content: "Yeah? What do you want?", allowedMentions: { repliedUser: true } });
 
@@ -118,11 +130,29 @@ client.on('messageCreate', async message => {
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    if (interaction.commandName === 'tape') {
+        // Check if user is the server owner
+        if (interaction.user.id !== interaction.guild.ownerId) {
+            return interaction.reply({ content: "❌ Only the server owner can tape Skelerix's mouth!", ephemeral: true });
+        }
+
+        isTaped = interaction.options.getBoolean('status');
+        if (isTaped) {
+            await interaction.reply(`📦 **Tape applied!** 🤐 Skelerix's mouth is now covered: *${getRandomMuffle()}*`);
+        } else {
+            await interaction.reply(`✂️ **Tape removed!** Skelerix can speak again.`);
+        }
+        return;
+    }
+
+    if (isTaped) {
+        return interaction.reply({ content: `📦 **${getRandomMuffle()}** *(Skelerix is taped up and can't use commands right now!)*`, ephemeral: true });
+    }
+
     if (interaction.commandName === 'ping') {
         const sent = await interaction.reply({ content: 'Pinging bot and AI...', fetchReply: true });
         const botLatency = sent.createdTimestamp - interaction.createdTimestamp;
 
-        // Measure AI latency
         let aiLatency = 'N/A';
         try {
             const aiStart = Date.now();
