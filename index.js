@@ -1,11 +1,9 @@
+
 require('dotenv').config();
 const { 
     Client, 
     GatewayIntentBits, 
     Partials, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder, 
     PermissionFlagsBits, 
     Events 
 } = require('discord.js');
@@ -98,7 +96,6 @@ async function checkRSSFeeds() {
         const item = await fetchRSS(feed.url);
         if (!item || lastGUIDs[feed.name] === item.id) continue;
 
-        // Skip sending on startup initialization, but save current GUID
         if (lastGUIDs[feed.name] === null) {
             lastGUIDs[feed.name] = item.id;
             continue;
@@ -114,52 +111,8 @@ async function checkRSSFeeds() {
 }
 
 // ==========================================
-// COMMAND BUILDERS & DISPATCHER
+// COMMAND HANDLERS ROUTING MAP
 // ==========================================
-const commandDefinitions = [
-    new SlashCommandBuilder()
-        .setName('sai')
-        .setDescription('Ask Skelerix AI a direct question.')
-        .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Check Skelerix status, bot latency, and AI response speed.'),
-    
-    new SlashCommandBuilder()
-        .setName('coinflip')
-        .setDescription('Flip a coin! Heads or Tails?'),
-    
-    new SlashCommandBuilder()
-        .setName('roll')
-        .setDescription('Roll a dice.')
-        .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
-    
-    new SlashCommandBuilder()
-        .setName('poll')
-        .setDescription('Create a quick interactive poll.')
-        .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('serverinfo')
-        .setDescription('Check out community stats.'),
-    
-    new SlashCommandBuilder()
-        .setName('timeout')
-        .setDescription('Timeout a disruptive user.')
-        .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
-        .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-    
-    new SlashCommandBuilder()
-        .setName('tape')
-        .setDescription("Put tape over Skelerix's mouth (Owner only).")
-        .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
-];
-
-const slashCommandsData = commandDefinitions.map(c => c.toJSON());
-
-// Command Handlers Routing Map
 const commandHandlers = {
     async tape(interaction) {
         if (interaction.user.id !== interaction.guild.ownerId) {
@@ -252,31 +205,15 @@ const commandHandlers = {
 // EVENT LISTENERS
 // ==========================================
 
-// Client Ready & Slash Command Registration
 client.once(Events.ClientReady, async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
-    
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    try {
-        // Step 1: Clear old global commands cache
-        await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-        console.log('[LOG] Cleared old global command cache.');
 
-        // Step 2: Re-register fresh commands after 2-second timeout
-        setTimeout(async () => {
-            await rest.put(Routes.applicationCommands(client.user.id), { body: slashCommandsData });
-            console.log('[LOG] Clean global commands registered successfully.');
-        }, 2000);
-    } catch (err) { 
-        console.error('[ERROR] Command registration failed:', err); 
-    }
-
-    // Initialize RSS Feeds
+    // Initialize RSS Feeds immediately and start 10-minute interval
     await checkRSSFeeds();
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
 
-// Chat AI Mention Handler
+// Mention Handler
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
@@ -303,7 +240,6 @@ client.on(Events.MessageCreate, async message => {
         const promptContext = `Recent chat:\n${history}\n\nRespond to ${message.author.username}: "${query}"`;
         const replyText = await askAI(SYSTEM_INSTRUCTION, promptContext);
         
-        // Ensure character safety limit for Discord responses
         const safeReply = replyText.length > 2000 ? `${replyText.slice(0, 1997)}...` : replyText;
         await message.reply({ content: safeReply, allowedMentions: { repliedUser: true } });
     } catch (err) {
@@ -318,12 +254,10 @@ client.on(Events.InteractionCreate, async interaction => {
     const handler = commandHandlers[interaction.commandName];
     if (!handler) return;
 
-    // Direct routing for tape toggle command
     if (interaction.commandName === 'tape') {
         return handler(interaction);
     }
 
-    // Global Tape restriction enforcement for all other commands
     if (isTaped) {
         return interaction.reply({ 
             content: `📦 **${getRandomMuffle()}** *(Skelerix is taped up and can't use commands right now!)*`, 
@@ -344,8 +278,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// Global Error Logging Guard
 process.on('unhandledRejection', error => console.error('[UNHANDLED REJECTION]:', error));
 
-// Log in
 client.login(process.env.DISCORD_TOKEN);
