@@ -3,6 +3,15 @@ const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('disc
 
 const commands = [
     new SlashCommandBuilder()
+        .setName('sai')
+        .setDescription('Ask Skelerix AI a direct question.')
+        .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
+    
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Check Skelerix status, bot latency, and AI response speed.'),
+
+    new SlashCommandBuilder()
         .setName('coinflip')
         .setDescription('Flip a coin! Heads or Tails?'),
     
@@ -37,20 +46,21 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log('[CLEANUP] Fetching bot application ID...');
-        const application = await rest.get(Routes.user());
-        const clientId = application.id;
+        console.log('[DEPLOY] Fetching Bot Client ID...');
+        const user = await rest.get(Routes.user());
+        const clientId = user.id;
 
         const GUILD_ID = process.env.GUILD_ID || null;
+
         if (GUILD_ID) {
-            console.log('[CLEANUP] Clearing guild-specific commands...');
-            await rest.put(Routes.applicationGuildCommands(clientId, GUILD_ID), { body: [] });
+            console.log(`[DEPLOY] Registering instant guild commands to ${GUILD_ID}...`);
+            await rest.put(Routes.applicationGuildCommands(clientId, GUILD_ID), { body: commands });
         }
 
-        console.log('[DEPLOY] Overwriting global commands without /sai and /ping...');
+        console.log('[DEPLOY] Registering global slash commands...');
         await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log('[SUCCESS] /sai and /ping deleted from Discord successfully!');
+        console.log('[SUCCESS] All slash commands including /sai and /ping registered successfully!');
     } catch (error) {
-        console.error('[ERROR]:', error);
+        console.error('[DEPLOY ERROR]:', error);
     }
 })();
