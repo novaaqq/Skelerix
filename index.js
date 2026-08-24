@@ -3,7 +3,11 @@ const {
     Client, 
     GatewayIntentBits, 
     Partials, 
-    Events 
+    PermissionFlagsBits, 
+    Events,
+    REST,
+    Routes,
+    SlashCommandBuilder
 } = require('discord.js');
 
 // ==========================================
@@ -33,6 +37,50 @@ const lastGUIDs = { TikTok: null, YouTube: null };
 let isTaped = false;
 
 const getRandomMuffle = () => MUFFLES[Math.floor(Math.random() * MUFFLES.length)];
+
+// ==========================================
+// SLASH COMMAND DEFINITIONS
+// ==========================================
+const commandsList = [
+    new SlashCommandBuilder()
+        .setName('sai')
+        .setDescription('Ask Skelerix AI a direct question.')
+        .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
+    
+    new SlashCommandBuilder()
+        .setName('ping')
+        .setDescription('Check Skelerix status, bot latency, and AI response speed.'),
+    
+    new SlashCommandBuilder()
+        .setName('coinflip')
+        .setDescription('Flip a coin! Heads or Tails?'),
+    
+    new SlashCommandBuilder()
+        .setName('roll')
+        .setDescription('Roll a dice.')
+        .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
+    
+    new SlashCommandBuilder()
+        .setName('poll')
+        .setDescription('Create a quick interactive poll.')
+        .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
+    
+    new SlashCommandBuilder()
+        .setName('serverinfo')
+        .setDescription('Check out community stats.'),
+    
+    new SlashCommandBuilder()
+        .setName('timeout')
+        .setDescription('Timeout a disruptive user.')
+        .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
+        .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+    
+    new SlashCommandBuilder()
+        .setName('tape')
+        .setDescription("Put tape over Skelerix's mouth (Owner only).")
+        .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
+].map(c => c.toJSON());
 
 // ==========================================
 // GEMINI AI INTEGRATION
@@ -125,6 +173,37 @@ const commandHandlers = {
         );
     },
 
+    async ping(interaction) {
+        const sent = await interaction.reply({ content: 'Pinging bot and AI...', fetchReply: true });
+        const botLatency = sent.createdTimestamp - interaction.createdTimestamp;
+
+        let aiLatency = 'N/A';
+        try {
+            const aiStart = Date.now();
+            await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] })
+            });
+            aiLatency = `${Date.now() - aiStart}ms`;
+        } catch {
+            aiLatency = 'Error';
+        }
+
+        return interaction.editReply(`Pong! ☠️ Skelerix is active! 🌀\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
+    },
+
+    async sai(interaction) {
+        const prompt = interaction.options.getString('prompt');
+        await interaction.deferReply();
+        try {
+            const reply = await askAI(SYSTEM_INSTRUCTION, prompt);
+            return interaction.editReply(reply.length > 2000 ? `${reply.slice(0, 1997)}...` : reply);
+        } catch (err) {
+            return interaction.editReply(`❌ Error: ${err.message}`);
+        }
+    },
+
     async coinflip(interaction) {
         const outcome = Math.random() < 0.5 ? '🪙 **Heads!**' : '🪙 **Tails!**';
         return interaction.reply(`The coin landed on: ${outcome}`);
@@ -175,11 +254,21 @@ const commandHandlers = {
 client.once(Events.ClientReady, async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
 
+    // Register full list of slash commands with Discord API
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+        console.log('[SYNC] Registering all slash commands...');
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commandsList });
+        console.log('[SYNC] All slash commands synced successfully!');
+    } catch (err) {
+        console.error('[SYNC ERROR]:', err);
+    }
+
     await checkRSSFeeds();
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
 
-// Mention Handler (Bot replies to pings using Gemini)
+// Mention Handler
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
