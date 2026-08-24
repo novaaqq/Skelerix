@@ -10,9 +10,6 @@ const {
     SlashCommandBuilder
 } = require('discord.js');
 
-// ==========================================
-// CONFIG & BOT INITIALIZATION
-// ==========================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -38,9 +35,7 @@ let isTaped = false;
 
 const getRandomMuffle = () => MUFFLES[Math.floor(Math.random() * MUFFLES.length)];
 
-// ==========================================
-// SLASH COMMAND DEFINITIONS
-// ==========================================
+// Slash command definitions
 const commandsList = [
     new SlashCommandBuilder()
         .setName('sai')
@@ -82,9 +77,6 @@ const commandsList = [
         .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
 ].map(c => c.toJSON());
 
-// ==========================================
-// GEMINI AI INTEGRATION
-// ==========================================
 async function askAI(systemPrompt, userPrompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
     
@@ -105,9 +97,6 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 }
 
-// ==========================================
-// RSS FEED SYSTEM
-// ==========================================
 async function fetchRSS(url) {
     try {
         const res = await fetch(url);
@@ -156,9 +145,6 @@ async function checkRSSFeeds() {
     }
 }
 
-// ==========================================
-// COMMAND HANDLERS ROUTING MAP
-// ==========================================
 const commandHandlers = {
     async tape(interaction) {
         if (interaction.user.id !== interaction.guild.ownerId) {
@@ -190,7 +176,7 @@ const commandHandlers = {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`Pong! ☠️ Skelerix is active! 🌀\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
+        return interaction.editReply(`Pong! ☠️ Skelerix is active!\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
     },
 
     async sai(interaction) {
@@ -247,19 +233,22 @@ const commandHandlers = {
     }
 };
 
-// ==========================================
-// EVENT LISTENERS
-// ==========================================
-
 client.once(Events.ClientReady, async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
 
-    // Register full list of slash commands with Discord API
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        console.log('[SYNC] Registering all slash commands...');
+        // Auto-detect server ID for instant local registration
+        const targetGuildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
+        
+        if (targetGuildId) {
+            console.log(`[SYNC] Deploying instant commands to Guild: ${targetGuildId}`);
+            await rest.put(Routes.applicationGuildCommands(client.user.id, targetGuildId), { body: commandsList });
+        }
+
+        console.log('[SYNC] Overwriting global slash commands...');
         await rest.put(Routes.applicationCommands(client.user.id), { body: commandsList });
-        console.log('[SYNC] All slash commands synced successfully!');
+        console.log('[SYNC] All commands synced successfully!');
     } catch (err) {
         console.error('[SYNC ERROR]:', err);
     }
@@ -268,7 +257,6 @@ client.once(Events.ClientReady, async () => {
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
 
-// Mention Handler
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
@@ -302,7 +290,6 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
-// Interaction Handler
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
