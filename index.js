@@ -176,7 +176,8 @@ const commandHandlers = {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`Pong! ☠️ Skelerix is active!\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
+        return interaction.editReply(`Pong! ☠️ Skelerix is active.and online! 🌀 
+\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
     },
 
     async sai(interaction) {
