@@ -7,9 +7,14 @@ const {
     Events,
     REST,
     Routes,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    ApplicationIntegrationType,
+    InteractionContextType
 } = require('discord.js');
 
+// ==========================================
+// CONFIG & BOT INITIALIZATION
+// ==========================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
@@ -35,48 +40,76 @@ let isTaped = false;
 
 const getRandomMuffle = () => MUFFLES[Math.floor(Math.random() * MUFFLES.length)];
 
-// Slash command definitions
+// Configures commands to work in Servers, Bot DMs, and Group DMs
+const enableUserInstall = (builder) => {
+    return builder
+        .setIntegrationTypes([
+            ApplicationIntegrationType.GuildInstall, 
+            ApplicationIntegrationType.UserInstall
+        ])
+        .setContexts([
+            InteractionContextType.Guild, 
+            InteractionContextType.BotDM, 
+            InteractionContextType.PrivateChannel
+        ]);
+};
+
+// ==========================================
+// SLASH COMMAND DEFINITIONS
+// ==========================================
 const commandsList = [
-    new SlashCommandBuilder()
-        .setName('sai')
-        .setDescription('Ask Skelerix AI a direct question.')
-        .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('ping')
-        .setDescription('Check Skelerix status, bot latency, and AI response speed.'),
-    
-    new SlashCommandBuilder()
-        .setName('coinflip')
-        .setDescription('Flip a coin! Heads or Tails?'),
-    
-    new SlashCommandBuilder()
-        .setName('roll')
-        .setDescription('Roll a dice.')
-        .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false)),
-    
-    new SlashCommandBuilder()
-        .setName('poll')
-        .setDescription('Create a quick interactive poll.')
-        .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true)),
-    
-    new SlashCommandBuilder()
-        .setName('serverinfo')
-        .setDescription('Check out community stats.'),
-    
-    new SlashCommandBuilder()
-        .setName('timeout')
-        .setDescription('Timeout a disruptive user.')
-        .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
-        .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-    
-    new SlashCommandBuilder()
-        .setName('tape')
-        .setDescription("Put tape over Skelerix's mouth (Owner only).")
-        .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('sai')
+            .setDescription('Ask Skelerix AI a direct question.')
+            .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('ping')
+            .setDescription('Check Skelerix status, bot latency, and AI response speed.')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('coinflip')
+            .setDescription('Flip a coin! Heads or Tails?')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('roll')
+            .setDescription('Roll a dice.')
+            .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('poll')
+            .setDescription('Create a quick interactive poll.')
+            .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('serverinfo')
+            .setDescription('Check out community stats.')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('timeout')
+            .setDescription('Timeout a disruptive user.')
+            .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
+            .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
+            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('tape')
+            .setDescription("Put tape over Skelerix's mouth (Owner only).")
+            .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
+    )
 ].map(c => c.toJSON());
 
+// ==========================================
+// GEMINI AI INTEGRATION
+// ==========================================
 async function askAI(systemPrompt, userPrompt) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
     
@@ -97,6 +130,9 @@ async function askAI(systemPrompt, userPrompt) {
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
 }
 
+// ==========================================
+// RSS FEED SYSTEM
+// ==========================================
 async function fetchRSS(url) {
     try {
         const res = await fetch(url);
@@ -145,9 +181,12 @@ async function checkRSSFeeds() {
     }
 }
 
+// ==========================================
+// COMMAND HANDLERS ROUTING MAP
+// ==========================================
 const commandHandlers = {
     async tape(interaction) {
-        if (interaction.user.id !== interaction.guild.ownerId) {
+        if (interaction.guild && interaction.user.id !== interaction.guild.ownerId) {
             return interaction.reply({ content: "❌ Only the server owner can tape Skelerix's mouth!", ephemeral: true });
         }
 
@@ -176,7 +215,7 @@ const commandHandlers = {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`Pong! ☠️ Skelerix is active.and online! 🌀 
+        return interaction.editReply(`Pong! ☠️ Skelerix is active and online! 🌀 
 \n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
     },
 
@@ -213,6 +252,9 @@ const commandHandlers = {
     },
 
     async serverinfo(interaction) {
+        if (!interaction.guild) {
+            return interaction.reply({ content: "❌ This command can only be used inside a server!", ephemeral: true });
+        }
         const { guild } = interaction;
         return interaction.reply(
             `🛡️ **${guild.name}** stats:\n👥 Members: **${guild.memberCount}**\n🚀 Boost Level: **Tier ${guild.premiumTier}** (${guild.premiumSubscriptionCount} boosts)`
@@ -220,6 +262,9 @@ const commandHandlers = {
     },
 
     async timeout(interaction) {
+        if (!interaction.guild) {
+            return interaction.reply({ content: "❌ This command can only be used inside a server!", ephemeral: true });
+        }
         const targetUser = interaction.options.getMember('user');
         const minutes = interaction.options.getInteger('duration');
 
@@ -234,12 +279,15 @@ const commandHandlers = {
     }
 };
 
+// ==========================================
+// EVENT LISTENERS
+// ==========================================
+
 client.once(Events.ClientReady, async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        // Auto-detect server ID for instant local registration
         const targetGuildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
         
         if (targetGuildId) {
@@ -249,7 +297,7 @@ client.once(Events.ClientReady, async () => {
 
         console.log('[SYNC] Overwriting global slash commands...');
         await rest.put(Routes.applicationCommands(client.user.id), { body: commandsList });
-        console.log('[SYNC] All commands synced successfully!');
+        console.log('[SYNC] All commands (Server & DM/Group) synced successfully!');
     } catch (err) {
         console.error('[SYNC ERROR]:', err);
     }
@@ -258,6 +306,7 @@ client.once(Events.ClientReady, async () => {
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
 
+// Mention Handler
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
@@ -275,13 +324,20 @@ client.on(Events.MessageCreate, async message => {
 
     try {
         await message.channel.sendTyping();
-        const fetched = await message.channel.messages.fetch({ limit: 60 });
-        const history = Array.from(fetched.values())
-            .reverse()
-            .map(m => `${m.author.username}: ${m.content}`)
-            .join('\n');
+        const fetched = await message.channel.messages.fetch({ limit: 60 }).catch(() => null);
         
-        const promptContext = `Recent chat:\n${history}\n\nRespond to ${message.author.username}: "${query}"`;
+        let history = "";
+        if (fetched) {
+            history = Array.from(fetched.values())
+                .reverse()
+                .map(m => `${m.author.username}: ${m.content}`)
+                .join('\n');
+        }
+
+        const promptContext = history 
+            ? `Recent chat:\n${history}\n\nRespond to ${message.author.username}: "${query}"`
+            : `Respond to ${message.author.username}: "${query}"`;
+
         const replyText = await askAI(SYSTEM_INSTRUCTION, promptContext);
         
         const safeReply = replyText.length > 2000 ? `${replyText.slice(0, 1997)}...` : replyText;
@@ -291,6 +347,7 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
+// Interaction Handler
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
