@@ -3,7 +3,6 @@ const {
     Client, 
     GatewayIntentBits, 
     Partials, 
-    PermissionFlagsBits, 
     Events 
 } = require('discord.js');
 
@@ -126,37 +125,6 @@ const commandHandlers = {
         );
     },
 
-    async ping(interaction) {
-        const sent = await interaction.reply({ content: 'Pinging bot and AI...', fetchReply: true });
-        const botLatency = sent.createdTimestamp - interaction.createdTimestamp;
-
-        let aiLatency = 'N/A';
-        try {
-            const aiStart = Date.now();
-            await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] })
-            });
-            aiLatency = `${Date.now() - aiStart}ms`;
-        } catch {
-            aiLatency = 'Error';
-        }
-
-        return interaction.editReply(`Pong! ☠️ Skelerix is active! 🌀\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
-    },
-
-    async sai(interaction) {
-        const prompt = interaction.options.getString('prompt');
-        await interaction.deferReply();
-        try {
-            const reply = await askAI(SYSTEM_INSTRUCTION, prompt);
-            return interaction.editReply(reply.length > 2000 ? `${reply.slice(0, 1997)}...` : reply);
-        } catch (err) {
-            return interaction.editReply(`❌ Error: ${err.message}`);
-        }
-    },
-
     async coinflip(interaction) {
         const outcome = Math.random() < 0.5 ? '🪙 **Heads!**' : '🪙 **Tails!**';
         return interaction.reply(`The coin landed on: ${outcome}`);
@@ -207,12 +175,11 @@ const commandHandlers = {
 client.once(Events.ClientReady, async () => {
     console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
 
-    // Initialize RSS Feeds immediately and start 10-minute interval
     await checkRSSFeeds();
     setInterval(checkRSSFeeds, 10 * 60 * 1000);
 });
 
-// Mention Handler
+// Mention Handler (Bot replies to pings using Gemini)
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.mentions.has(client.user)) return;
 
@@ -246,7 +213,7 @@ client.on(Events.MessageCreate, async message => {
     }
 });
 
-// Slash Command Interaction Handler
+// Interaction Handler
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
