@@ -25,7 +25,7 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-// Updated System Instruction: Casual, sharp, witty, and fun (no mean roasts)
+// Casual, sharp, witty, and fun system instruction
 const SYSTEM_INSTRUCTION = "You are Skelerix, a casual, sharp, and quick-witted AI assistant. Talk naturally, like a laid-back group chat member. Keep responses concise, playful, and clever. Avoid robotic formality and mean roasts—just keep it cool, helpful, and funny.";
 
 const MUFFLES = [
@@ -217,7 +217,7 @@ const commandHandlers = {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`Pong! All systems operational.\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
+        return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n•latency: ${botLatency}ms\n•AI speed: ${aiLatency}`);
     },
 
     async sai(interaction) {
