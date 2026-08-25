@@ -9,7 +9,8 @@ const {
     Routes,
     SlashCommandBuilder,
     ApplicationIntegrationType,
-    InteractionContextType
+    InteractionContextType,
+    MessageFlags
 } = require('discord.js');
 
 // ==========================================
@@ -24,7 +25,8 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-const SYSTEM_INSTRUCTION = "You are Skelerix, a sharp, witty, and cool AI assistant built into the Discord community server. Keep responses brief, clear, and punchy, and remember the context of the ongoing conversation.";
+// Updated System Instruction: Casual, sharp, witty, and fun (no mean roasts)
+const SYSTEM_INSTRUCTION = "You are Skelerix, a casual, sharp, and quick-witted AI assistant. Talk naturally, like a laid-back group chat member. Keep responses concise, playful, and clever. Avoid robotic formality and mean roasts—just keep it cool, helpful, and funny.";
 
 const MUFFLES = [
     "*Mmf!*", 
@@ -32,7 +34,7 @@ const MUFFLES = [
     "*Mmm-mph!*", 
     "*Hmph!*", 
     "*Mmmph...*", 
-    "*Muffled angry noises*"
+    "*Muffled noises*"
 ];
 
 const lastGUIDs = { TikTok: null, YouTube: null };
@@ -61,7 +63,7 @@ const commandsList = [
     enableUserInstall(
         new SlashCommandBuilder()
             .setName('sai')
-            .setDescription('Ask Skelerix AI a direct question.')
+            .setDescription('Ask Skelerix AI anything.')
             .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true))
     ),
     enableUserInstall(
@@ -187,19 +189,19 @@ async function checkRSSFeeds() {
 const commandHandlers = {
     async tape(interaction) {
         if (interaction.guild && interaction.user.id !== interaction.guild.ownerId) {
-            return interaction.reply({ content: "❌ Only the server owner can tape Skelerix's mouth!", ephemeral: true });
+            return interaction.reply({ content: "Only the server owner can tape my mouth shut.", flags: MessageFlags.Ephemeral });
         }
 
         isTaped = interaction.options.getBoolean('status');
         return interaction.reply(
             isTaped
-                ? `📦 **Tape applied!** 🤐 Skelerix's mouth is now covered: *${getRandomMuffle()}*`
-                : `✂️ **Tape removed!** Skelerix can speak again.`
+                ? `📦 **Tape applied!** 🤐 *${getRandomMuffle()}*`
+                : `✂️ **Tape removed!** Back in business.`
         );
     },
 
     async ping(interaction) {
-        const sent = await interaction.reply({ content: 'Pinging bot and AI...', fetchReply: true });
+        const sent = await interaction.reply({ content: 'Checking latency...', fetchReply: true });
         const botLatency = sent.createdTimestamp - interaction.createdTimestamp;
 
         let aiLatency = 'N/A';
@@ -215,8 +217,7 @@ const commandHandlers = {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`Pong! ☠️ Skelerix is active and online! 🌀 
-\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
+        return interaction.editReply(`Pong! All systems operational.\n- Bot Latency: **${botLatency}ms**\n- AI Speed: **${aiLatency}**`);
     },
 
     async sai(interaction) {
@@ -232,7 +233,7 @@ const commandHandlers = {
 
     async coinflip(interaction) {
         const outcome = Math.random() < 0.5 ? '🪙 **Heads!**' : '🪙 **Tails!**';
-        return interaction.reply(`The coin landed on: ${outcome}`);
+        return interaction.reply(`It landed on: ${outcome}`);
     },
 
     async roll(interaction) {
@@ -253,7 +254,7 @@ const commandHandlers = {
 
     async serverinfo(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({ content: "❌ This command can only be used inside a server!", ephemeral: true });
+            return interaction.reply({ content: "Run this command inside a server to see stats.", flags: MessageFlags.Ephemeral });
         }
         const { guild } = interaction;
         return interaction.reply(
@@ -263,18 +264,18 @@ const commandHandlers = {
 
     async timeout(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({ content: "❌ This command can only be used inside a server!", ephemeral: true });
+            return interaction.reply({ content: "Can't timeout users outside of a server.", flags: MessageFlags.Ephemeral });
         }
         const targetUser = interaction.options.getMember('user');
         const minutes = interaction.options.getInteger('duration');
 
-        if (!targetUser) return interaction.reply({ content: "❌ User not found.", ephemeral: true });
+        if (!targetUser) return interaction.reply({ content: "User not found.", flags: MessageFlags.Ephemeral });
 
         try {
             await targetUser.timeout(minutes * 60 * 1000, `Timed out by ${interaction.user.tag}`);
-            return interaction.reply(`🔇 Successfully timed out **${targetUser.user.tag}** for **${minutes} minute(s)**.`);
+            return interaction.reply(`🔇 **${targetUser.user.tag}** timed out for **${minutes} minute(s)**.`);
         } catch (err) {
-            return interaction.reply({ content: `❌ Failed to timeout user: ${err.message}`, ephemeral: true });
+            return interaction.reply({ content: `❌ Couldn't timeout user: ${err.message}`, flags: MessageFlags.Ephemeral });
         }
     }
 };
@@ -312,14 +313,14 @@ client.on(Events.MessageCreate, async message => {
 
     if (isTaped) {
         return message.reply({ 
-            content: `📦 **${getRandomMuffle()}** *(Skelerix's mouth is taped shut!)*`, 
+            content: `📦 **${getRandomMuffle()}**`, 
             allowedMentions: { repliedUser: true } 
         });
     }
 
     const query = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!query) {
-        return message.reply({ content: "Yeah? What do you want?", allowedMentions: { repliedUser: true } });
+        return message.reply({ content: "Hey! What's on your mind?", allowedMentions: { repliedUser: true } });
     }
 
     try {
@@ -360,8 +361,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (isTaped) {
         return interaction.reply({ 
-            content: `📦 **${getRandomMuffle()}** *(Skelerix is taped up and can't use commands right now!)*`, 
-            ephemeral: true 
+            content: `📦 **${getRandomMuffle()}** *(Mouth is taped shut)*`, 
+            flags: MessageFlags.Ephemeral 
         });
     }
 
@@ -369,7 +370,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await handler(interaction);
     } catch (err) {
         console.error(`[COMMAND ERROR] ${interaction.commandName}:`, err);
-        const errorMsg = { content: '❌ An error occurred while executing this command.', ephemeral: true };
+        const errorMsg = { content: '❌ Something went wrong processing that command.', flags: MessageFlags.Ephemeral };
         if (interaction.deferred || interaction.replied) {
             await interaction.followUp(errorMsg);
         } else {
