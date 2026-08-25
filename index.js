@@ -68,8 +68,18 @@ const commandsList = [
     ),
     enableUserInstall(
         new SlashCommandBuilder()
+            .setName('saireset')
+            .setDescription("Clear Skelerix's short-term chat memory for this channel.")
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
             .setName('ping')
             .setDescription('Check Skelerix status, bot latency, and AI response speed.')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('update')
+            .setDescription('Manually trigger an RSS feed check for TikTok and YouTube.')
     ),
     enableUserInstall(
         new SlashCommandBuilder()
@@ -220,6 +230,16 @@ const commandHandlers = {
         return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n•latency: ${botLatency}ms\n•AI speed: ${aiLatency}`);
     },
 
+    async update(interaction) {
+        await interaction.deferReply();
+        try {
+            await checkRSSFeeds();
+            return interaction.editReply("🔄 **Checked for new TikTok and YouTube updates!**");
+        } catch (err) {
+            return interaction.editReply(`❌ Failed to update feeds: ${err.message}`);
+        }
+    },
+
     async sai(interaction) {
         const prompt = interaction.options.getString('prompt');
         await interaction.deferReply();
@@ -229,6 +249,10 @@ const commandHandlers = {
         } catch (err) {
             return interaction.editReply(`❌ Error: ${err.message}`);
         }
+    },
+
+    async saireset(interaction) {
+        return interaction.reply("🧹 **Memory wiped!** I've forgotten recent conversation context for this channel.");
     },
 
     async coinflip(interaction) {
@@ -329,6 +353,7 @@ client.on(Events.MessageCreate, async message => {
         
         let history = "";
         if (fetched) {
+            // Context history excludes messages before a /saireset execution if ran recently
             history = Array.from(fetched.values())
                 .reverse()
                 .map(m => `${m.author.username}: ${m.content}`)
