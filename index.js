@@ -10,6 +10,7 @@ const {
     SlashCommandBuilder,
     ApplicationIntegrationType,
     InteractionContextType,
+    ChannelType,
     MessageFlags
 } = require('discord.js');
 
@@ -78,8 +79,35 @@ const commandsList = [
     ),
     enableUserInstall(
         new SlashCommandBuilder()
+            .setName('update')
+            .setDescription('Manually trigger an RSS feed check for TikTok and YouTube updates.')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
             .setName('gameupd')
-            .setDescription('Manually trigger an RSS feed check for game and channel updates.')
+            .setDescription('Post an official game update announcement.')
+            .addChannelOption(o => 
+                o.setName('channel')
+                 .setDescription('The target channel to send the announcement to')
+                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                 .setRequired(true)
+            )
+            .addStringOption(o => 
+                o.setName('game')
+                 .setDescription('Name of the game being updated')
+                 .setRequired(true)
+            )
+            .addStringOption(o => 
+                o.setName('version')
+                 .setDescription('Update version (e.g., v1.2.0 or Beta 2.0)')
+                 .setRequired(true)
+            )
+            .addStringOption(o => 
+                o.setName('logs')
+                 .setDescription('The update logs / patch notes (Use \\n for new lines)')
+                 .setRequired(true)
+            )
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     ),
     enableUserInstall(
         new SlashCommandBuilder()
@@ -230,13 +258,44 @@ const commandHandlers = {
         return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n•latency: ${botLatency}ms\n•AI speed: ${aiLatency}`);
     },
 
-    async gameupd(interaction) {
+    async update(interaction) {
         await interaction.deferReply();
         try {
             await checkRSSFeeds();
-            return interaction.editReply("🎮 **Checked for new game and RSS updates!**");
+            return interaction.editReply("🔄 **Checked for new TikTok and YouTube updates!**");
         } catch (err) {
             return interaction.editReply(`❌ Failed to check updates: ${err.message}`);
+        }
+    },
+
+    async gameupd(interaction) {
+        const targetChannel = interaction.options.getChannel('channel');
+        const gameName = interaction.options.getString('game');
+        const version = interaction.options.getString('version');
+        const logsRaw = interaction.options.getString('logs');
+
+        const formattedLogs = logsRaw.replace(/\\n/g, '\n');
+
+        const announcement = 
+            `🎮 **${gameName} Update Release!**\n` +
+            `*Official Patch Notes*\n\n` +
+            `📌 **Version:** \`${version}\`\n\n` +
+            `📋 **What's New:**\n` +
+            `${formattedLogs}\n\n` +
+            `─────────────\n` +
+            `*Posted by ${interaction.user.tag}*`;
+
+        try {
+            await targetChannel.send(announcement);
+            return interaction.reply({ 
+                content: `✅ Update announcement for **${gameName}** (\`${version}\`) sent successfully to ${targetChannel}!`, 
+                flags: MessageFlags.Ephemeral 
+            });
+        } catch (err) {
+            return interaction.reply({ 
+                content: `❌ Could not send message to ${targetChannel}: ${err.message}`, 
+                flags: MessageFlags.Ephemeral 
+            });
         }
     },
 
