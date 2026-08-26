@@ -78,8 +78,8 @@ const commandsList = [
     ),
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName('update')
-            .setDescription('Manually trigger an RSS feed check for TikTok and YouTube.')
+            .setName('gameupd')
+            .setDescription('Manually trigger an RSS feed check for game and channel updates.')
     ),
     enableUserInstall(
         new SlashCommandBuilder()
@@ -230,13 +230,13 @@ const commandHandlers = {
         return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n•latency: ${botLatency}ms\n•AI speed: ${aiLatency}`);
     },
 
-    async update(interaction) {
+    async gameupd(interaction) {
         await interaction.deferReply();
         try {
             await checkRSSFeeds();
-            return interaction.editReply("🔄 **Checked for new TikTok and YouTube updates!**");
+            return interaction.editReply("🎮 **Checked for new game and RSS updates!**");
         } catch (err) {
-            return interaction.editReply(`❌ Failed to update feeds: ${err.message}`);
+            return interaction.editReply(`❌ Failed to check updates: ${err.message}`);
         }
     },
 
@@ -353,7 +353,6 @@ client.on(Events.MessageCreate, async message => {
         
         let history = "";
         if (fetched) {
-            // Context history excludes messages before a /saireset execution if ran recently
             history = Array.from(fetched.values())
                 .reverse()
                 .map(m => `${m.author.username}: ${m.content}`)
