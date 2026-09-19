@@ -2,61 +2,61 @@ require('dotenv').config();
 const { 
     Client, 
     GatewayIntentBits, 
-    Partials, 
+    REST, 
+    Routes, 
+    Events, 
+    SlashCommandBuilder, 
+    ApplicationIntegrationType, 
+    InteractionContextType, 
+    ChannelType, 
     PermissionFlagsBits, 
-    Events,
-    REST,
-    Routes,
-    SlashCommandBuilder,
-    ApplicationIntegrationType,
-    InteractionContextType,
-    ChannelType,
-    MessageFlags
+    MessageFlags 
 } = require('discord.js');
 const Groq = require('groq-sdk');
+const Parser = require('rss-parser');
 
-// ==========================================
-// CONFIG & BOT INITIALIZATION
-// ==========================================
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent
-    ],
-    partials: [Partials.Channel]
+    ]
 });
 
-// Initialize Groq Client
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const parser = new Parser();
 
-// Casual, sharp, witty, and fun system instruction
-const SYSTEM_INSTRUCTION = "You are Skelerix, a casual, sharp, and quick-witted AI assistant. Talk naturally, like a laid-back group chat member. Keep responses concise, playful, and clever. Avoid robotic formality and mean roasts—just keep it cool, helpful, and funny.";
-
-const MUFFLES = [
-    "*Mmf!*", 
-    "*Mphf mmrgh!*", 
-    "*Mmm-mph!*", 
-    "*Hmph!*", 
-    "*Mmmph...*", 
-    "*Muffled noises*"
-];
-
-const EIGHT_BALL_RESPONSES = [
-    "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes definitely.",
-    "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
-    "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.",
-    "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.",
-    "Don't count on it.", "My reply is no.", "My sources say no.",
-    "Outlook not so good.", "Very doubtful."
-];
-
-const lastGUIDs = { TikTok: null, YouTube: null };
+// Global State
 let isTaped = false;
+let shortTermMemory = new Map(); // channelId -> array of { role, content }
+let lastRSSCheck = { tiktok: null, youtube: null };
 
-const getRandomMuffle = () => MUFFLES[Math.floor(Math.random() * MUFFLES.length)];
+const SYSTEM_INSTRUCTION = "You are Skelerix, a helpful, energetic Discord bot. Keep answers engaging, natural, and clear.";
 
-// Configures commands to work in Servers, Bot DMs, and Group DMs
+const mufflePhrases = [
+    "Mmph! Mmmph!",
+    "Mmm-mmmgh!",
+    "Mff! Mmph-mm!",
+    "Mmmph, mmph!",
+    "Mmmgh... mmff!"
+];
+
+function getRandomMuffle() {
+    return mufflePhrases[Math.floor(Math.random() * mufflePhrases.length)];
+}
+
+async function askAI(sysPrompt, userPrompt) {
+    const res = await groq.chat.completions.create({
+        messages: [
+            { role: "system", content: sysPrompt },
+            { role: "user", content: userPrompt }
+        ],
+        model: "llama-3.3-70b-versatile"
+    });
+    return res.choices[0]?.message?.content || "No response received.";
+}
+
+// Enable User Install / DM / Group Contexts
 const enableUserInstall = (builder) => {
     return builder
         .setIntegrationTypes([
@@ -117,7 +117,7 @@ const commandsList = [
             )
             .addStringOption(o => 
                 o.setName('logs')
-                 .setDescription('The update logs / patch notes (Use \\n for new lines)')
+                 .setDescription('The update logs / patch notes (Use \n for new lines)')
                  .setRequired(true)
             )
             .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
@@ -158,7 +158,6 @@ const commandsList = [
             .setDescription("Put tape over Skelerix's mouth (Owner only).")
             .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
     ),
-    // NEW COMMANDS
     enableUserInstall(
         new SlashCommandBuilder()
             .setName('remind')
@@ -181,7 +180,7 @@ const commandsList = [
         new SlashCommandBuilder()
             .setName('choose')
             .setDescription('Randomly choose an option from a comma-separated list.')
-            .addStringOption(o => o.setName('options').setDescription('Options separated by commas (e.g. Red, Blue, Green)').setRequired(true))
+            .addStringOption(o => o.setName('options').setDescription('Options separated by commas').setRequired(true))
     ),
     enableUserInstall(
         new SlashCommandBuilder()
@@ -200,288 +199,283 @@ const commandsList = [
             .setName('translate')
             .setDescription('Translate text to a target language.')
             .addStringOption(o => o.setName('text').setDescription('Text to translate').setRequired(true))
-            .addStringOption(o => o.setName('language').setDescription('Target language (e.g., English, Turkish, Spanish)').setRequired(true))
+            .addStringOption(o => o.setName('language').setDescription('Target language').setRequired(true))
     )
 ].map(c => c.toJSON());
 
 // ==========================================
-// GROQ AI INTEGRATION
+// RSS CHECKER LOGIC
 // ==========================================
-async function askAI(systemPrompt, userPrompt) {
-    const completion = await groq.chat.completions.create({
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-        ],
-        model: 'llama-3.3-70b-versatile',
-    });
-
-    return completion.choices[0]?.message?.content || "No response generated.";
-}
-
-// ==========================================
-// RSS FEED SYSTEM
-// ==========================================
-async function fetchRSS(url) {
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        
-        const text = await res.text();
-        const titleMatch = text.match(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/);
-        const linkMatch = text.match(/<item>[\s\S]*?<link>([\s\S]*?)<\/link>/);
-
-        if (!titleMatch || !linkMatch) return null;
-
-        const title = titleMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-        const link = linkMatch[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
-
-        return { title, link, id: link };
-    } catch (err) {
-        console.error('[RSS FETCH ERROR]:', err.message);
-        return null;
-    }
-}
-
 async function checkRSSFeeds() {
     const channelId = process.env.RSS_CHANNEL_ID;
     if (!channelId) return;
 
-    const feeds = [
-        { url: process.env.TIKTOK_RSS_URL, name: 'TikTok' },
-        { url: process.env.YOUTUBE_RSS_URL, name: 'YouTube' }
-    ].filter(feed => feed.url);
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) return;
 
-    for (const feed of feeds) {
-        const item = await fetchRSS(feed.url);
-        if (!item || lastGUIDs[feed.name] === item.id) continue;
-
-        if (lastGUIDs[feed.name] === null) {
-            lastGUIDs[feed.name] = item.id;
-            continue;
+    if (process.env.TIKTOK_RSS_URL) {
+        try {
+            const feed = await parser.parseURL(process.env.TIKTOK_RSS_URL);
+            if (feed.items.length > 0) {
+                const latest = feed.items[0];
+                if (lastRSSCheck.tiktok !== latest.link) {
+                    if (lastRSSCheck.tiktok !== null) {
+                        await channel.send(`ğŸµ **New TikTok Video!**
+${latest.title || 'Check it out:'}
+${latest.link}`);
+                    }
+                    lastRSSCheck.tiktok = latest.link;
+                }
+            }
+        } catch (e) {
+            console.error('[RSS ERROR - TikTok]:', e.message);
         }
+    }
 
-        lastGUIDs[feed.name] = item.id;
-
-        const channel = await client.channels.fetch(channelId).catch(() => null);
-        if (channel?.isTextBased()) {
-            await channel.send(`📢 **New ${feed.name} Update!**\n\n**${item.title}**\n${item.link}`).catch(console.error);
+    if (process.env.YOUTUBE_RSS_URL) {
+        try {
+            const feed = await parser.parseURL(process.env.YOUTUBE_RSS_URL);
+            if (feed.items.length > 0) {
+                const latest = feed.items[0];
+                if (lastRSSCheck.youtube !== latest.link) {
+                    if (lastRSSCheck.youtube !== null) {
+                        await channel.send(`ğŸ”´ **New YouTube Video!**
+**${latest.title}**
+${latest.link}`);
+                    }
+                    lastRSSCheck.youtube = latest.link;
+                }
+            }
+        } catch (e) {
+            console.error('[RSS ERROR - YouTube]:', e.message);
         }
     }
 }
 
 // ==========================================
-// COMMAND HANDLERS ROUTING MAP
+// COMMAND HANDLERS
 // ==========================================
 const commandHandlers = {
-    async tape(interaction) {
-        if (interaction.guild && interaction.user.id !== interaction.guild.ownerId) {
-            return interaction.reply({ content: "Only the server owner can tape my mouth shut.", flags: MessageFlags.Ephemeral });
-        }
+    async sai(interaction) {
+        const prompt = interaction.options.getString('prompt');
+        await interaction.deferReply();
 
-        isTaped = interaction.options.getBoolean('status');
-        return interaction.reply(
-            isTaped
-                ? `📦 **Tape applied!** 🤐 *${getRandomMuffle()}*`
-                : `✂️ **Tape removed!** Back in business.`
-        );
+        try {
+            const reply = await askAI(SYSTEM_INSTRUCTION, prompt);
+            const safeReply = reply.length > 2000 ? `${reply.slice(0, 1997)}...` : reply;
+            return interaction.editReply(safeReply);
+        } catch (err) {
+            return interaction.editReply(`âš ï¸ Error: \`${err.message}\``);
+        }
+    },
+
+    async saireset(interaction) {
+        shortTermMemory.delete(interaction.channelId);
+        return interaction.reply({ content: 'ğŸ§¹ Short-term AI chat memory for this channel has been cleared!', flags: MessageFlags.Ephemeral });
     },
 
     async ping(interaction) {
-        const sent = await interaction.reply({ content: 'Checking latency...', fetchReply: true });
-        const botLatency = sent.createdTimestamp - interaction.createdTimestamp;
+        const start = Date.now();
+        await interaction.deferReply();
+        const apiLatency = Date.now() - start;
 
         let aiLatency = 'N/A';
         try {
             const aiStart = Date.now();
-            await groq.chat.completions.create({
-                messages: [{ role: 'user', content: 'ping' }],
-                model: 'llama-3.3-70b-versatile',
-            });
+            await askAI('System test', 'Ping');
             aiLatency = `${Date.now() - aiStart}ms`;
-        } catch {
+        } catch (e) {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n• latency: ${botLatency}ms\n• AI speed: ${aiLatency}`);
+        return interaction.editReply(
+            `ğŸ“ **Pong!**
+` +
+            `â€¢ Bot Latency: \`${apiLatency}ms\`
+` +
+            `â€¢ WebSocket Latency: \`${client.ws.ping}ms\`
+` +
+            `â€¢ Groq AI Speed: \`${aiLatency}\``
+        );
     },
 
     async update(interaction) {
-        await interaction.deferReply();
-        try {
-            await checkRSSFeeds();
-            return interaction.editReply("🔄 **Checked for new TikTok and YouTube updates!**");
-        } catch (err) {
-            return interaction.editReply(`❌ Failed to check updates: ${err.message}`);
-        }
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await checkRSSFeeds();
+        return interaction.editReply('ğŸ”„ RSS feed check completed!');
     },
 
     async gameupd(interaction) {
         const targetChannel = interaction.options.getChannel('channel');
         const gameName = interaction.options.getString('game');
         const version = interaction.options.getString('version');
-        const logsRaw = interaction.options.getString('logs');
+        const rawLogs = interaction.options.getString('logs');
 
-        const formattedLogs = logsRaw.replace(/\\n/g, '\n');
+        const formattedLogs = rawLogs.split('\n').join('
+');
 
-        const announcement = 
-            `🎮 **${gameName} Update Release!**\n` +
-            `*Official Patch Notes*\n\n` +
-            `📌 **Version:** \`${version}\`\n\n` +
-            `📋 **What's New:**\n` +
-            `${formattedLogs}\n\n` +
-            `─────────────\n` +
-            `*Posted by ${interaction.user.tag}*`;
+        const embed = {
+            color: 0x5865F2,
+            title: `ğŸ® ${gameName} - Update ${version}`,
+            description: formattedLogs,
+            timestamp: new Date().toISOString(),
+            footer: { text: `Posted by ${interaction.user.username}` }
+        };
 
         try {
-            await targetChannel.send(announcement);
-            return interaction.reply({ 
-                content: `✅ Update announcement for **${gameName}** (\`${version}\`) sent successfully to ${targetChannel}!`, 
-                flags: MessageFlags.Ephemeral 
-            });
+            await targetChannel.send({ embeds: [embed] });
+            return interaction.reply({ content: `âœ… Game update announcement posted to ${targetChannel}!`, flags: MessageFlags.Ephemeral });
         } catch (err) {
-            return interaction.reply({ 
-                content: `❌ Could not send message to ${targetChannel}:${err.message}`, 
-                flags: MessageFlags.Ephemeral 
-            });
+            return interaction.reply({ content: `âŒ Failed to send announcement: ${err.message}`, flags: MessageFlags.Ephemeral });
         }
-    },
-
-    async sai(interaction) {
-        const prompt = interaction.options.getString('prompt');
-        await interaction.deferReply();
-        try {
-            const reply = await askAI(SYSTEM_INSTRUCTION, prompt);
-            return interaction.editReply(reply.length > 2000 ? `${reply.slice(0, 1997)}...` : reply);
-        } catch (err) {
-            return interaction.editReply(`❌ Error: ${err.message}`);
-        }
-    },
-
-    async saireset(interaction) {
-        return interaction.reply("🧹 **Memory wiped!** I've forgotten recent conversation context for this channel.");
     },
 
     async coinflip(interaction) {
-        const outcome = Math.random() < 0.5 ? '🪙 **Heads!**' : '🪙 **Tails!**';
-        return interaction.reply(`It landed on: ${outcome}`);
+        const result = Math.random() < 0.5 ? 'ğŸª™ **Heads!**' : 'ğŸª™ **Tails!**';
+        return interaction.reply(result);
     },
 
     async roll(interaction) {
         const sides = interaction.options.getInteger('sides') || 6;
-        const roll = Math.floor(Math.random() * sides) + 1;
-        return interaction.reply(`🎲 Rolled a d${sides}: **${roll}**`);
+        const result = Math.floor(Math.random() * sides) + 1;
+        return interaction.reply(`ğŸ² You rolled a **${result}** (1-${sides})!`);
     },
 
     async poll(interaction) {
         const question = interaction.options.getString('question');
-        const pollMessage = await interaction.reply({ 
-            content: `📊 **Community Poll:**\n> ${question}\n\n*(Vote using reactions below!)*`, 
-            fetchReply: true 
-        });
-        await pollMessage.react('👍');
-        await pollMessage.react('👎');
+        await interaction.reply({ content: `ğŸ“Š **Poll:** ${question}` });
+        const msg = await interaction.fetchReply();
+        await msg.react('ğŸ‘');
+        await msg.react('ğŸ‘');
     },
 
     async serverinfo(interaction) {
         if (!interaction.guild) {
-            return interaction.reply({ content: "Run this command inside a server to see stats.", flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: 'This command can only be used in a server!', flags: MessageFlags.Ephemeral });
         }
-        const { guild } = interaction;
+
+        const guild = interaction.guild;
         return interaction.reply(
-            `🛡️ **${guild.name}** stats:\n👥 Members: **${guild.memberCount}**\n🚀 Boost Level: **Tier ${guild.premiumTier}** (${guild.premiumSubscriptionCount} boosts)`
+            `ğŸ° **Server Info for ${guild.name}**
+` +
+            `â€¢ Total Members: \`${guild.memberCount}\`
+` +
+            `â€¢ Created On: <t:${Math.floor(guild.createdTimestamp / 1000)}:D>
+` +
+            `â€¢ Server ID: \`${guild.id}\``
         );
     },
 
     async timeout(interaction) {
-        if (!interaction.guild) {
-            return interaction.reply({ content: "Can't timeout users outside of a server.", flags: MessageFlags.Ephemeral });
-        }
-        const targetUser = interaction.options.getMember('user');
-        const minutes = interaction.options.getInteger('duration');
+        const targetUser = interaction.options.getUser('user');
+        const duration = interaction.options.getInteger('duration');
 
-        if (!targetUser) return interaction.reply({ content: "User not found.", flags: MessageFlags.Ephemeral });
+        if (!interaction.guild) {
+            return interaction.reply({ content: 'This command can only be used in a server!', flags: MessageFlags.Ephemeral });
+        }
+
+        const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+        if (!member) {
+            return interaction.reply({ content: 'User not found in this server.', flags: MessageFlags.Ephemeral });
+        }
 
         try {
-            await targetUser.timeout(minutes * 60 * 1000, `Timed out by ${interaction.user.tag}`);
-            return interaction.reply(`🔇 **${targetUser.user.tag}** timed out for **${minutes} minute(s)**.`);
+            await member.timeout(duration * 60 * 1000, `Timed out by ${interaction.user.tag}`);
+            return interaction.reply(`â³ **${targetUser.username}** has been timed out for ${duration} minute(s).`);
         } catch (err) {
-            return interaction.reply({ content: `❌ Couldn't timeout user: ${err.message}`, flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: `âŒ Failed to timeout user: ${err.message}`, flags: MessageFlags.Ephemeral });
         }
     },
 
-    // NEW COMMAND HANDLERS
+    async tape(interaction) {
+        const status = interaction.options.getBoolean('status');
+        isTaped = status;
+
+        if (isTaped) {
+            return interaction.reply('ğŸ“¦ Tape has been placed over Skelerix's mouth. Bot is now muted!');
+        } else {
+            return interaction.reply('ğŸ—£ï¸ Tape removed! Skelerix can talk again.');
+        }
+    },
+
     async remind(interaction) {
         const minutes = interaction.options.getInteger('minutes');
         const task = interaction.options.getString('task');
 
-        if (minutes <= 0) {
-            return interaction.reply({ content: "❌ Minutes must be greater than 0.", flags: MessageFlags.Ephemeral });
-        }
-
-        await interaction.reply(`⏰ Reminder set! I'll ping you in **${minutes} minute(s)** for: "${task}"`);
+        await interaction.reply({ content: `â° Reminder set for **${minutes} minute(s)**: "${task}"`, flags: MessageFlags.Ephemeral });
 
         setTimeout(async () => {
-            const reminderMsg = `🔔 <@${interaction.user.id}> **Reminder:**${task}`;
-            if (interaction.channel) {
-                await interaction.channel.send(reminderMsg).catch(() => null);
-            } else {
-                await interaction.user.send(reminderMsg).catch(() => null);
+            try {
+                await interaction.user.send(`â° **Reminder:** ${task}`);
+            } catch (err) {
+                if (interaction.channel) {
+                    await interaction.channel.send(`â° <@${interaction.user.id}> **Reminder:** ${task}`);
+                }
             }
         }, minutes * 60 * 1000);
     },
 
     async stats(interaction) {
-        const uptimeSeconds = Math.floor(process.uptime());
-        const days = Math.floor(uptimeSeconds / 86400);
-        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
-        const mins = Math.floor((uptimeSeconds % 3600) / 60);
-        const secs = uptimeSeconds % 60;
-
-        const memoryUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
-        const totalServers = client.guilds.cache.size;
+        const uptime = Math.floor(client.uptime / 1000);
+        const hours = Math.floor(uptime / 3600);
+        const mins = Math.floor((uptime % 3600) / 60);
+        const secs = uptime % 60;
 
         return interaction.reply(
-            `📊 **Skelerix Bot Statistics**\n` +
-            `• **Uptime:** ${days}d${hours}h ${mins}m${secs}s\n` +
-            `• **Memory Usage:** ${memoryUsage} MB\n` +
-            `• **Servers:** ${totalServers}\n` +
-            `• **WebSocket Latency:** ${client.ws.ping}ms`
+            `ğŸ“Š **Skelerix Bot Statistics**
+` +
+            `â€¢ Uptime: \`${hours}h ${mins}m ${secs}s\`
+` +
+            `â€¢ Servers: \`${client.guilds.cache.size}\`
+` +
+            `â€¢ Memory Usage: \`${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB\`
+` +
+            `â€¢ Engine: \`Node.js ${process.version}\` | \`discord.js v14\``
         );
     },
 
     async userinfo(interaction) {
-        const user = interaction.options.getUser('target') || interaction.user;
-        const member = interaction.guild?.members.cache.get(user.id);
+        const target = interaction.options.getUser('target') || interaction.user;
+        const member = interaction.guild ? await interaction.guild.members.fetch(target.id).catch(() => null) : null;
 
-        const joinedServer = member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'N/A';
-        const createdAccount = `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`;
+        let info = `ğŸ‘¤ **User Info for ${target.tag}**
+` +
+                   `â€¢ Account Created: <t:${Math.floor(target.createdTimestamp / 1000)}:R>
+` +
+                   `â€¢ User ID: \`${target.id}\``;
 
-        return interaction.reply(
-            `👤 **User Information for ${user.tag}**\n` +
-            `• **User ID:** \`${user.id}\`\n` +
-            `• **Account Created:** ${createdAccount}\n` +
-            `• **Joined Server:** ${joinedServer}\n` +
-            `• **Bot:** ${user.bot ? 'Yes' : 'No'}`
-        );
+        if (member && member.joinedTimestamp) {
+            info += `
+â€¢ Joined Server: <t:${Math.floor(member.joinedTimestamp / 1000)}:R>`;
+        }
+
+        return interaction.reply(info);
     },
 
     async choose(interaction) {
-        const optionsRaw = interaction.options.getString('options');
-        const choices = optionsRaw.split(',').map(c => c.trim()).filter(c => c.length > 0);
+        const optionsStr = interaction.options.getString('options');
+        const options = optionsStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
 
-        if (choices.length < 2) {
-            return interaction.reply({ content: "❌ Please provide at least two options separated by commas.", flags: MessageFlags.Ephemeral });
+        if (options.length < 2) {
+            return interaction.reply({ content: 'Please provide at least 2 comma-separated options!', flags: MessageFlags.Ephemeral });
         }
 
-        const picked = choices[Math.floor(Math.random() * choices.length)];
-        return interaction.reply(`🎯 Out of choices [${choices.join(', ')}], I pick: **${picked}**`);
+        const picked = options[Math.floor(Math.random() * options.length)];
+        return interaction.reply(`ğŸ¯ I choose: **${picked}**`);
     },
 
-    async ['8ball'](interaction) {
+    async 8ball(interaction) {
         const question = interaction.options.getString('question');
-        const answer = EIGHT_BALL_RESPONSES[Math.floor(Math.random() * EIGHT_BALL_RESPONSES.length)];
-        return interaction.reply(`🔮 **Question:** ${question}\n🎱 **8-Ball Says:** ${answer}`);
+        const responses = [
+            'It is certain.', 'Without a doubt.', 'Yes - definitely.',
+            'As I see it, yes.', 'Most likely.', 'Outlook good.',
+            'Reply hazy, try again.', 'Ask again later.', 'Better not tell you now.',
+            'Don't count on it.', 'My reply is no.', 'Very doubtful.'
+        ];
+
+        const answer = responses[Math.floor(Math.random() * responses.length)];
+        return interaction.reply(`ğŸ± **Question:** ${question}
+**Answer:** ${answer}`);
     },
 
     async define(interaction) {
@@ -489,11 +483,12 @@ const commandHandlers = {
         await interaction.deferReply();
 
         try {
-            const systemPrompt = "You are a concise dictionary assistant. Define the given word/phrase directly and clearly. Provide a short definition and an example sentence.";
-            const reply = await askAI(systemPrompt, `Define: ${term}`);
-            return interaction.editReply(`📖 **Definition for "${term}":**\n${reply}`);
+            const systemPrompt = "You are a concise dictionary assistant. Provide a short, clear definition for the term requested.";
+            const reply = await askAI(systemPrompt, `Define the term: ${term}`);
+            return interaction.editReply(`ğŸ“– **Definition of "${term}":**
+${reply}`);
         } catch (err) {
-            return interaction.editReply(`❌ Failed to define term: ${err.message}`);
+            return interaction.editReply(`âŒ Failed to fetch definition: ${err.message}`);
         }
     },
 
@@ -503,4 +498,34 @@ const commandHandlers = {
         await interaction.deferReply();
 
         try {
-            const systemPrompt = `You a
+            const systemPrompt = `You are a direct translator. Translate the given text accurately into ${targetLang}. Return ONLY the translated text without extra formatting or explanation.`;
+            const reply = await askAI(systemPrompt, text);
+            return interaction.editReply(`ğŸŒ **Translation (${targetLang}):**
+${reply}`);
+        } catch (err) {
+            return interaction.editReply(`âŒ Failed to translate text: ${err.message}`);
+        }
+    }
+};
+
+// ==========================================
+// EVENT LISTENERS
+// ==========================================
+
+client.once(Events.ClientReady, async () => {
+    console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
+
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+        const targetGuildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
+        
+        if (targetGuildId) {
+            console.log(`[SYNC] Deploying instant commands to Guild: ${targetGuildId}`);
+            await rest.put(Routes.applicationGuildCommands(client.user.id, targetGuildId), { body: commandsList });
+        }
+
+        console.log('[SYNC] Overwriting global slash commands...');
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commandsList });
+        console.log('[SYNC] All commands (Server & DM/Group) synced successfully!');
+    } catch (err) {
+        console.
