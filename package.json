@@ -4,7 +4,8 @@
   "description": "Multi-platform Discord bot powered by Groq AI and discord.js",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "deploy": "node deploy.js"
   },
   "keywords": [],
   "author": "",
