@@ -42,6 +42,15 @@ const MUFFLES = [
     "*Muffled noises*"
 ];
 
+const EIGHT_BALL_RESPONSES = [
+    "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes definitely.",
+    "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
+    "Yes.", "Signs point to yes.", "Reply hazy, try again.", "Ask again later.",
+    "Better not tell you now.", "Cannot predict now.", "Concentrate and ask again.",
+    "Don't count on it.", "My reply is no.", "My sources say no.",
+    "Outlook not so good.", "Very doubtful."
+];
+
 const lastGUIDs = { TikTok: null, YouTube: null };
 let isTaped = false;
 
@@ -148,6 +157,50 @@ const commandsList = [
             .setName('tape')
             .setDescription("Put tape over Skelerix's mouth (Owner only).")
             .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
+    ),
+    // NEW COMMANDS
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('remind')
+            .setDescription('Set a reminder.')
+            .addIntegerOption(o => o.setName('minutes').setDescription('Time in minutes from now').setRequired(true))
+            .addStringOption(o => o.setName('task').setDescription('What to remind you about').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('stats')
+            .setDescription('Show bot statistics.')
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('userinfo')
+            .setDescription('Show user information.')
+            .addUserOption(o => o.setName('target').setDescription('The user to inspect').setRequired(false))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('choose')
+            .setDescription('Randomly choose an option from a comma-separated list.')
+            .addStringOption(o => o.setName('options').setDescription('Options separated by commas (e.g. Red, Blue, Green)').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('8ball')
+            .setDescription('Ask the magic 8-ball a question.')
+            .addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('define')
+            .setDescription('Define a word or phrase.')
+            .addStringOption(o => o.setName('term').setDescription('Word or phrase to define').setRequired(true))
+    ),
+    enableUserInstall(
+        new SlashCommandBuilder()
+            .setName('translate')
+            .setDescription('Translate text to a target language.')
+            .addStringOption(o => o.setName('text').setDescription('Text to translate').setRequired(true))
+            .addStringOption(o => o.setName('language').setDescription('Target language (e.g., English, Turkish, Spanish)').setRequired(true))
     )
 ].map(c => c.toJSON());
 
@@ -355,108 +408,99 @@ const commandHandlers = {
         } catch (err) {
             return interaction.reply({ content: `❌ Couldn't timeout user: ${err.message}`, flags: MessageFlags.Ephemeral });
         }
-    }
-};
+    },
 
-// ==========================================
-// EVENT LISTENERS
-// ==========================================
+    // NEW COMMAND HANDLERS
+    async remind(interaction) {
+        const minutes = interaction.options.getInteger('minutes');
+        const task = interaction.options.getString('task');
 
-client.once(Events.ClientReady, async () => {
-    console.log(`[LOG] Skelerix is online as ${client.user.tag}`);
-
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    try {
-        const targetGuildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
-        
-        if (targetGuildId) {
-            console.log(`[SYNC] Deploying instant commands to Guild: ${targetGuildId}`);
-            await rest.put(Routes.applicationGuildCommands(client.user.id, targetGuildId), { body: commandsList });
+        if (minutes <= 0) {
+            return interaction.reply({ content: "❌ Minutes must be greater than 0.", flags: MessageFlags.Ephemeral });
         }
 
-        console.log('[SYNC] Overwriting global slash commands...');
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commandsList });
-        console.log('[SYNC] All commands (Server & DM/Group) synced successfully!');
-    } catch (err) {
-        console.error('[SYNC ERROR]:', err);
-    }
+        await interaction.reply(`⏰ Reminder set! I'll ping you in **${minutes} minute(s)** for: "${task}"`);
 
-    await checkRSSFeeds();
-    setInterval(checkRSSFeeds, 10 * 60 * 1000);
-});
+        setTimeout(async () => {
+            const reminderMsg = `🔔 <@${interaction.user.id}> **Reminder:**${task}`;
+            if (interaction.channel) {
+                await interaction.channel.send(reminderMsg).catch(() => null);
+            } else {
+                await interaction.user.send(reminderMsg).catch(() => null);
+            }
+        }, minutes * 60 * 1000);
+    },
 
-// Mention Handler
-client.on(Events.MessageCreate, async message => {
-    if (message.author.bot || !message.mentions.has(client.user)) return;
+    async stats(interaction) {
+        const uptimeSeconds = Math.floor(process.uptime());
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const mins = Math.floor((uptimeSeconds % 3600) / 60);
+        const secs = uptimeSeconds % 60;
 
-    if (isTaped) {
-        return message.reply({ 
-            content: `📦 **${getRandomMuffle()}**`, 
-            allowedMentions: { repliedUser: true } 
-        });
-    }
+        const memoryUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        const totalServers = client.guilds.cache.size;
 
-    const query = message.content.replace(/<@!?\d+>/g, '').trim();
-    if (!query) {
-        return message.reply({ content: "Hey! What's on your mind?", allowedMentions: { repliedUser: true } });
-    }
+        return interaction.reply(
+            `📊 **Skelerix Bot Statistics**\n` +
+            `• **Uptime:** ${days}d${hours}h ${mins}m${secs}s\n` +
+            `• **Memory Usage:** ${memoryUsage} MB\n` +
+            `• **Servers:** ${totalServers}\n` +
+            `• **WebSocket Latency:** ${client.ws.ping}ms`
+        );
+    },
 
-    try {
-        await message.channel.sendTyping();
-        const fetched = await message.channel.messages.fetch({ limit: 60 }).catch(() => null);
-        
-        let history = "";
-        if (fetched) {
-            history = Array.from(fetched.values())
-                .reverse()
-                .map(m => `${m.author.username}:${m.content}`)
-                .join('\n');
+    async userinfo(interaction) {
+        const user = interaction.options.getUser('target') || interaction.user;
+        const member = interaction.guild?.members.cache.get(user.id);
+
+        const joinedServer = member ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : 'N/A';
+        const createdAccount = `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`;
+
+        return interaction.reply(
+            `👤 **User Information for ${user.tag}**\n` +
+            `• **User ID:** \`${user.id}\`\n` +
+            `• **Account Created:** ${createdAccount}\n` +
+            `• **Joined Server:** ${joinedServer}\n` +
+            `• **Bot:** ${user.bot ? 'Yes' : 'No'}`
+        );
+    },
+
+    async choose(interaction) {
+        const optionsRaw = interaction.options.getString('options');
+        const choices = optionsRaw.split(',').map(c => c.trim()).filter(c => c.length > 0);
+
+        if (choices.length < 2) {
+            return interaction.reply({ content: "❌ Please provide at least two options separated by commas.", flags: MessageFlags.Ephemeral });
         }
 
-        const promptContext = history 
-            ? `Recent chat:\n${history}\n\nRespond to ${message.author.username}: "${query}"`
-            : `Respond to ${message.author.username}: "${query}"`;
+        const picked = choices[Math.floor(Math.random() * choices.length)];
+        return interaction.reply(`🎯 Out of choices [${choices.join(', ')}], I pick: **${picked}**`);
+    },
 
-        const replyText = await askAI(SYSTEM_INSTRUCTION, promptContext);
-        
-        const safeReply = replyText.length > 2000 ? `${replyText.slice(0, 1997)}...` : replyText;
-        await message.reply({ content: safeReply, allowedMentions: { repliedUser: true } });
-    } catch (err) {
-        await message.reply({ content: `⚠️ Error: \`${err.message}\``, allowedMentions: { repliedUser: true } });
-    }
-});
+    async ['8ball'](interaction) {
+        const question = interaction.options.getString('question');
+        const answer = EIGHT_BALL_RESPONSES[Math.floor(Math.random() * EIGHT_BALL_RESPONSES.length)];
+        return interaction.reply(`🔮 **Question:** ${question}\n🎱 **8-Ball Says:** ${answer}`);
+    },
 
-// Interaction Handler
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    async define(interaction) {
+        const term = interaction.options.getString('term');
+        await interaction.deferReply();
 
-    const handler = commandHandlers[interaction.commandName];
-    if (!handler) return;
-
-    if (interaction.commandName === 'tape') {
-        return handler(interaction);
-    }
-
-    if (isTaped) {
-        return interaction.reply({ 
-            content: `📦 **${getRandomMuffle()}** *(Mouth is taped shut)*`, 
-            flags: MessageFlags.Ephemeral 
-        });
-    }
-
-    try {
-        await handler(interaction);
-    } catch (err) {
-        console.error(`[COMMAND ERROR] ${interaction.commandName}:`, err);
-        const errorMsg = { content: '❌ Something went wrong processing that command.', flags: MessageFlags.Ephemeral };
-        if (interaction.deferred || interaction.replied) {
-            await interaction.followUp(errorMsg);
-        } else {
-            await interaction.reply(errorMsg);
+        try {
+            const systemPrompt = "You are a concise dictionary assistant. Define the given word/phrase directly and clearly. Provide a short definition and an example sentence.";
+            const reply = await askAI(systemPrompt, `Define: ${term}`);
+            return interaction.editReply(`📖 **Definition for "${term}":**\n${reply}`);
+        } catch (err) {
+            return interaction.editReply(`❌ Failed to define term: ${err.message}`);
         }
-    }
-});
+    },
 
-process.on('unhandledRejection', error => console.error('[UNHANDLED REJECTION]:', error));
+    async translate(interaction) {
+        const text = interaction.options.getString('text');
+        const targetLang = interaction.options.getString('language');
+        await interaction.deferReply();
 
-client.login(process.env.DISCORD_TOKEN);
+        try {
+            const systemPrompt = `You a
