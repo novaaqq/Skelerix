@@ -13,6 +13,7 @@ const {
     ChannelType,
     MessageFlags
 } = require('discord.js');
+const Groq = require('groq-sdk');
 
 // ==========================================
 // CONFIG & BOT INITIALIZATION
@@ -25,6 +26,9 @@ const client = new Client({
     ],
     partials: [Partials.Channel]
 });
+
+// Initialize Groq Client
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Casual, sharp, witty, and fun system instruction
 const SYSTEM_INSTRUCTION = "You are Skelerix, a casual, sharp, and quick-witted AI assistant. Talk naturally, like a laid-back group chat member. Keep responses concise, playful, and clever. Avoid robotic formality and mean roasts—just keep it cool, helpful, and funny.";
@@ -148,26 +152,18 @@ const commandsList = [
 ].map(c => c.toJSON());
 
 // ==========================================
-// GEMINI AI INTEGRATION
+// GROQ AI INTEGRATION
 // ==========================================
 async function askAI(systemPrompt, userPrompt) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-    
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [{ role: 'user', parts: [{ text: userPrompt }] }]
-        })
+    const completion = await groq.chat.completions.create({
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ],
+        model: 'llama-3.3-70b-versatile',
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-        throw new Error(data.error?.message || `API Error Status: ${response.status}`);
-    }
-
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+    return completion.choices[0]?.message?.content || "No response generated.";
 }
 
 // ==========================================
@@ -245,17 +241,16 @@ const commandHandlers = {
         let aiLatency = 'N/A';
         try {
             const aiStart = Date.now();
-            await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] })
+            await groq.chat.completions.create({
+                messages: [{ role: 'user', content: 'ping' }],
+                model: 'llama-3.3-70b-versatile',
             });
             aiLatency = `${Date.now() - aiStart}ms`;
         } catch {
             aiLatency = 'Error';
         }
 
-        return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n•latency: ${botLatency}ms\n•AI speed: ${aiLatency}`);
+        return interaction.editReply(`☠️ Skelerix is active and online! 🌀\n• latency: ${botLatency}ms\n• AI speed: ${aiLatency}`);
     },
 
     async update(interaction) {
@@ -293,7 +288,7 @@ const commandHandlers = {
             });
         } catch (err) {
             return interaction.reply({ 
-                content: `❌ Could not send message to ${targetChannel}: ${err.message}`, 
+                content: `❌ Could not send message to ${targetChannel}:${err.message}`, 
                 flags: MessageFlags.Ephemeral 
             });
         }
@@ -414,7 +409,7 @@ client.on(Events.MessageCreate, async message => {
         if (fetched) {
             history = Array.from(fetched.values())
                 .reverse()
-                .map(m => `${m.author.username}: ${m.content}`)
+                .map(m => `${m.author.username}:${m.content}`)
                 .join('\n');
         }
 
