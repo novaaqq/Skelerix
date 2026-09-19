@@ -1,280 +1,183 @@
-require("dotenv").config();
+require('dotenv').config();
+const { 
+    REST, 
+    Routes, 
+    SlashCommandBuilder, 
+    ApplicationIntegrationType, 
+    InteractionContextType, 
+    ChannelType, 
+    PermissionFlagsBits 
+} = require('discord.js');
 
-const {
-    REST,
-    Routes,
-    SlashCommandBuilder,
-    PermissionFlagsBits,
-    ApplicationIntegrationType,
-    InteractionContextType,
-    ChannelType
-} = require("discord.js");
-
-const enableUserInstall = builder =>
-    builder
+// Configures commands to work in Servers, Bot DMs, and Group DMs
+const enableUserInstall = (builder) => {
+    return builder
         .setIntegrationTypes([
-            ApplicationIntegrationType.GuildInstall,
+            ApplicationIntegrationType.GuildInstall, 
             ApplicationIntegrationType.UserInstall
         ])
         .setContexts([
-            InteractionContextType.Guild,
-            InteractionContextType.BotDM,
+            InteractionContextType.Guild, 
+            InteractionContextType.BotDM, 
             InteractionContextType.PrivateChannel
         ]);
+};
 
+// ==========================================
+// SLASH COMMAND DEFINITIONS
+// ==========================================
 const commands = [
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("sai")
-            .setDescription("Ask Skelerix AI anything.")
-            .addStringOption(o =>
-                o.setName("prompt")
-                    .setDescription("What to ask?")
-                    .setRequired(true)
-            )
+            .setName('sai')
+            .setDescription('Ask Skelerix AI anything.')
+            .addStringOption(o => o.setName('prompt').setDescription('What to ask?').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("saireset")
-            .setDescription("Clear Skelerix memory.")
+            .setName('saireset')
+            .setDescription("Clear Skelerix's short-term chat memory for this channel.")
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("ping")
-            .setDescription("Check bot and AI latency.")
+            .setName('ping')
+            .setDescription('Check Skelerix status, bot latency, and AI response speed.')
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("update")
-            .setDescription("Manually check RSS feeds.")
+            .setName('update')
+            .setDescription('Manually trigger an RSS feed check for TikTok and YouTube updates.')
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("gameupd")
-            .setDescription("Post a game update.")
-            .addChannelOption(o =>
-                o.setName("channel")
-                    .setDescription("Target channel")
-                    .addChannelTypes(
-                        ChannelType.GuildText,
-                        ChannelType.GuildAnnouncement
-                    )
-                    .setRequired(true)
+            .setName('gameupd')
+            .setDescription('Post an official game update announcement.')
+            .addChannelOption(o => 
+                o.setName('channel')
+                 .setDescription('The target channel to send the announcement to')
+                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                 .setRequired(true)
             )
-            .addStringOption(o =>
-                o.setName("game")
-                    .setDescription("Game name")
-                    .setRequired(true)
+            .addStringOption(o => 
+                o.setName('game')
+                 .setDescription('Name of the game being updated')
+                 .setRequired(true)
             )
-            .addStringOption(o =>
-                o.setName("version")
-                    .setDescription("Version")
-                    .setRequired(true)
+            .addStringOption(o => 
+                o.setName('version')
+                 .setDescription('Update version (e.g., v1.2.0 or Beta 2.0)')
+                 .setRequired(true)
             )
-            .addStringOption(o =>
-                o.setName("logs")
-                    .setDescription("Patch notes")
-                    .setRequired(true)
+            .addStringOption(o => 
+                o.setName('logs')
+                 .setDescription('The update logs / patch notes (Use \\n for new lines)')
+                 .setRequired(true)
             )
-            .setDefaultMemberPermissions(
-                PermissionFlagsBits.ManageMessages
-            )
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("coinflip")
-            .setDescription("Flip a coin.")
+            .setName('coinflip')
+            .setDescription('Flip a coin! Heads or Tails?')
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("roll")
-            .setDescription("Roll a dice.")
-            .addIntegerOption(o =>
-                o.setName("sides")
-                    .setDescription("Number of sides")
-                    .setMinValue(2)
-                    .setMaxValue(1000)
-            )
+            .setName('roll')
+            .setDescription('Roll a dice.')
+            .addIntegerOption(o => o.setName('sides').setDescription('Number of sides (default 6)').setRequired(false))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("poll")
-            .setDescription("Create a quick poll.")
-            .addStringOption(o =>
-                o.setName("question")
-                    .setDescription("Poll question")
-                    .setRequired(true)
-            )
+            .setName('poll')
+            .setDescription('Create a quick interactive poll.')
+            .addStringOption(o => o.setName('question').setDescription('The poll question').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("serverinfo")
-            .setDescription("Show server information.")
+            .setName('serverinfo')
+            .setDescription('Check out community stats.')
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("userinfo")
-            .setDescription("Show user information.")
-            .addUserOption(o =>
-                o.setName("user")
-                    .setDescription("User to inspect")
-            )
+            .setName('timeout')
+            .setDescription('Timeout a disruptive user.')
+            .addUserOption(o => o.setName('user').setDescription('The user to timeout').setRequired(true))
+            .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes').setRequired(true))
+            .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("stats")
-            .setDescription("Show Skelerix statistics.")
+            .setName('tape')
+            .setDescription("Put tape over Skelerix's mouth (Owner only).")
+            .addBooleanOption(o => o.setName('status').setDescription('True to tape, False to remove tape').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("choose")
-            .setDescription("Choose randomly.")
-            .addStringOption(o =>
-                o.setName("options")
-                    .setDescription("Comma-separated options")
-                    .setRequired(true)
-            )
+            .setName('remind')
+            .setDescription('Set a reminder.')
+            .addIntegerOption(o => o.setName('minutes').setDescription('Time in minutes from now').setRequired(true))
+            .addStringOption(o => o.setName('task').setDescription('What to remind you about').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("8ball")
-            .setDescription("Ask the magic 8-ball.")
-            .addStringOption(o =>
-                o.setName("question")
-                    .setDescription("Your question")
-                    .setRequired(true)
-            )
+            .setName('stats')
+            .setDescription('Show bot statistics.')
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("define")
-            .setDescription("Define a word.")
-            .addStringOption(o =>
-                o.setName("word")
-                    .setDescription("Word or phrase")
-                    .setRequired(true)
-            )
+            .setName('userinfo')
+            .setDescription('Show user information.')
+            .addUserOption(o => o.setName('target').setDescription('The user to inspect').setRequired(false))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("translate")
-            .setDescription("Translate text.")
-            .addStringOption(o =>
-                o.setName("text")
-                    .setDescription("Text to translate")
-                    .setRequired(true)
-            )
-            .addStringOption(o =>
-                o.setName("language")
-                    .setDescription("Target language")
-                    .setRequired(true)
-            )
+            .setName('choose')
+            .setDescription('Randomly choose an option from a comma-separated list.')
+            .addStringOption(o => o.setName('options').setDescription('Options separated by commas').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("remind")
-            .setDescription("Set a reminder.")
-            .addStringOption(o =>
-                o.setName("when")
-                    .setDescription("30s, 10m, 2h, or 1d")
-                    .setRequired(true)
-            )
-            .addStringOption(o =>
-                o.setName("message")
-                    .setDescription("Reminder message")
-                    .setRequired(true)
-            )
+            .setName('8ball')
+            .setDescription('Ask the magic 8-ball a question.')
+            .addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("timeout")
-            .setDescription("Timeout a user.")
-            .addUserOption(o =>
-                o.setName("user")
-                    .setDescription("User to timeout")
-                    .setRequired(true)
-            )
-            .addIntegerOption(o =>
-                o.setName("duration")
-                    .setDescription("Duration in minutes")
-                    .setRequired(true)
-            )
-            .setDefaultMemberPermissions(
-                PermissionFlagsBits.ModerateMembers
-            )
+            .setName('define')
+            .setDescription('Define a word or phrase.')
+            .addStringOption(o => o.setName('term').setDescription('Word or phrase to define').setRequired(true))
     ),
-
     enableUserInstall(
         new SlashCommandBuilder()
-            .setName("tape")
-            .setDescription("Tape Skelerix's mouth.")
-            .addBooleanOption(o =>
-                o.setName("status")
-                    .setDescription("True to tape, false to remove")
-                    .setRequired(true)
-            )
+            .setName('translate')
+            .setDescription('Translate text to a target language.')
+            .addStringOption(o => o.setName('text').setDescription('Text to translate').setRequired(true))
+            .addStringOption(o => o.setName('language').setDescription('Target language').setRequired(true))
     )
+].map(c => c.toJSON());
 
-].map(command => command.toJSON());
-
-const rest =
-    new REST({ version: "10" })
-        .setToken(process.env.DISCORD_TOKEN);
+// ==========================================
+// DEPLOYMENT SCRIPT
+// ==========================================
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        const user =
-            await rest.get(Routes.user());
-
-        const clientId = user.id;
-
-        const guildId =
-            process.env.GUILD_ID || null;
-
-        if (guildId) {
-            await rest.put(
-                Routes.applicationGuildCommands(
-                    clientId,
-                    guildId
-                ),
-                {
-                    body: commands
-                }
-            );
+        if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
+            console.error('❌ Missing DISCORD_TOKEN or CLIENT_ID in environment variables!');
+            process.exit(1);
         }
 
-        await rest.put(
-            Routes.applicationCommands(clientId),
-            {
-                body: commands
-            }
+        console.log(`🚀 Started refreshing ${commands.length} application (/) commands...`);
+
+        // Deploys globally across all servers and DMs
+        const data = await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands }
         );
 
-        console.log(
-            "[SUCCESS] All slash commands deployed!"
-        );
-
+        console.log(`✅ Successfully reloaded ${data.length} global application (/) commands!`);
     } catch (error) {
-        console.error(
-            "[DEPLOY ERROR]",
-            error
-        );
+        console.error('❌ Error deploying commands:', error);
     }
 })();
